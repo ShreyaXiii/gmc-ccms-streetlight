@@ -1,6 +1,14 @@
 # IoT Centralized Control and Monitoring System (CCMS) for Public Street Lighting
 ### Gandhidham Municipal Corporation (GMC) — Seva First Hackathon 2026 (Government of Gujarat)
 
+[![Live Demo](https://img.shields.io/badge/🌐%20Live%20Demo-gmc--ccms--streetlight.vercel.app-06B6D4?style=for-the-badge&logo=vercel&logoColor=white)](https://gmc-ccms-streetlight.vercel.app)
+[![GitHub](https://img.shields.io/badge/GitHub-ShreyaXiii%2Fgmc--ccms--streetlight-181717?style=for-the-badge&logo=github)](https://github.com/ShreyaXiii/gmc-ccms-streetlight)
+[![Hackathon](https://img.shields.io/badge/Seva%20First%20Hackathon-2026%20Gujarat-orange?style=for-the-badge)](https://github.com/ShreyaXiii/gmc-ccms-streetlight)
+
+> 🚀 **[LIVE WEBSITE → https://gmc-ccms-streetlight.vercel.app](https://gmc-ccms-streetlight.vercel.app)**
+>
+> **Demo Login:** `admin@gmc.gov.in` / `GmcAdmin@2026`
+
 A modern, responsive, enterprise-grade municipal IoT control room platform engineered for public street lighting networks. Designed to interface seamlessly with an **ESP32 microcontroller prototype** controlling a 6-channel relay board, current and voltage sensors, LDR ambient light sensor, and safe fault simulation switches, with support for scalable virtual streetlights across municipal wards.
 
 ---

@@ -79,3 +79,4 @@ export const GMCLogo: React.FC<GMCLogoProps> = ({ className = '', size = 44 }) =
     </div>
   );
 };
+

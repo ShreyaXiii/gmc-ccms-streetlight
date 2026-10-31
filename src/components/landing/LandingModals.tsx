@@ -135,3 +135,4 @@ export const InfoModal: React.FC<InfoModalProps> = ({ title, isOpen, onClose, ch
     </div>
   );
 };
+

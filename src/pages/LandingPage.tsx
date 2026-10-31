@@ -27,12 +27,12 @@ import {
 import { getSupabaseStatus } from '../services/supabaseClient';
 
 interface LandingPageProps {
-  onEnterDashboard: () => void;
+  onEnterDashboard: (roleOverride?: 'administrator' | 'operator') => void;
   onOpenMap: () => void;
 }
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOpenMap }) => {
-  const { isAuthenticated, user, login, register, loginWithGoogle, forgotPassword, isLoading } =
+  const { isAuthenticated, user, login, register, loginWithGoogle, forgotPassword, logout, isLoading } =
     useAuth();
 
   // Navigation & Modal states
@@ -69,11 +69,38 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
   // Handler for Access Dashboard buttons
   const handleAccessDashboard = () => {
     if (isAuthenticated) {
-      onEnterDashboard();
+      onEnterDashboard(user?.role);
     } else {
       setAuthError(null);
       setAuthSuccess(null);
       setIsAuthModalOpen(true);
+    }
+  };
+
+  // 1-Click Quick Demo Login Handler
+  const handleQuickDemoLogin = async (role: 'admin' | 'operator') => {
+    setAuthError(null);
+    setAuthSuccess(null);
+    if (role === 'admin') {
+      setLoginEmail('admin@gmc.gov.in');
+      setLoginPassword('admin123');
+      const res = await login('admin@gmc.gov.in', 'admin123');
+      if (res.success) {
+        setIsAuthModalOpen(false);
+        onEnterDashboard('administrator');
+      } else {
+        setAuthError(res.error || 'Failed to sign in as Admin.');
+      }
+    } else {
+      setLoginEmail('operator@gmc.gov.in');
+      setLoginPassword('operator123');
+      const res = await login('operator@gmc.gov.in', 'operator123');
+      if (res.success) {
+        setIsAuthModalOpen(false);
+        onEnterDashboard('operator');
+      } else {
+        setAuthError(res.error || 'Failed to sign in as Operator.');
+      }
     }
   };
 
@@ -91,7 +118,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
     const res = await login(loginEmail, loginPassword);
     if (res.success) {
       setIsAuthModalOpen(false);
-      onEnterDashboard();
+      const session = localStorage.getItem('gmc_ccms_user_session');
+      const parsed = session ? JSON.parse(session) : null;
+      onEnterDashboard(parsed?.role);
     } else {
       setAuthError(res.error || 'Sign in failed. Please verify credentials.');
     }
@@ -108,21 +137,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
       return;
     }
 
-    if (regPassword.length < 8) {
-      setAuthError('Password must be at least 8 characters long.');
+    if (regPassword.length < 6) {
+      setAuthError('Password must be at least 6 characters long.');
       return;
     }
 
     const res = await register(regFullName, regEmail, regPassword, regConfirmPassword);
     if (res.success) {
-      setAuthSuccess('Account registered successfully as Field Operator! You may now sign in.');
-      setLoginEmail(regEmail);
-      setLoginPassword('');
-      setRegFullName('');
-      setRegEmail('');
-      setRegPassword('');
-      setRegConfirmPassword('');
-      setAuthTab('signin');
+      setIsAuthModalOpen(false);
+      onEnterDashboard('operator');
     } else {
       setAuthError(res.error || 'Registration failed. Please check your details.');
     }
@@ -245,14 +268,33 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
 
           {/* Right Action: Access Dashboard */}
           <div className="hidden sm:flex items-center gap-3">
-            <button
-              onClick={handleAccessDashboard}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#0284C7] hover:bg-[#0369A1] active:bg-[#075985] text-white text-xs font-semibold shadow-md hover:shadow-cyan-500/25 transition-all transform hover:-translate-y-0.5"
-            >
-              <Lock className="h-3.5 w-3.5 text-white" />
-              <span>Access Dashboard</span>
-              <ArrowRight className="h-3.5 w-3.5 text-white" />
-            </button>
+            {isAuthenticated && user ? (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleAccessDashboard}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 text-xs font-bold shadow-md hover:shadow-cyan-500/25 transition-all"
+                >
+                  <Lock className="h-3.5 w-3.5" />
+                  <span>Control Room ({user.role})</span>
+                  <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  onClick={logout}
+                  className="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-rose-950/60 hover:text-rose-400 border border-slate-700 text-[11px] font-semibold text-slate-300 transition-colors"
+                >
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleAccessDashboard}
+                className="inline-flex items-center gap-2 px-5 py-2.5 rounded-full bg-[#0284C7] hover:bg-[#0369A1] active:bg-[#075985] text-white text-xs font-semibold shadow-md hover:shadow-cyan-500/25 transition-all transform hover:-translate-y-0.5"
+              >
+                <Lock className="h-3.5 w-3.5 text-white" />
+                <span>Access Dashboard</span>
+                <ArrowRight className="h-3.5 w-3.5 text-white" />
+              </button>
+            )}
           </div>
 
           {/* Mobile Hamburger Button */}
@@ -892,12 +934,37 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
                   )}
                 </div>
 
-                {/* Default Demo Accounts Tip */}
-                <div className="mt-4 p-2.5 rounded-lg bg-cyan-950/20 border border-cyan-800/40 text-[11px] text-cyan-300">
-                  <div className="font-semibold text-cyan-400 mb-0.5">Quick Demo Logins:</div>
-                  <div className="flex justify-between">
-                    <span>Admin: admin@gmc.gov.in / admin123</span>
-                    <span>Operator: operator@gmc.gov.in / operator123</span>
+                {/* 1-Click Demo Login Shortcuts */}
+                <div className="mt-4 p-3 rounded-xl bg-cyan-950/30 border border-cyan-800/50 text-xs">
+                  <div className="font-semibold text-cyan-300 mb-2 flex items-center justify-between">
+                    <span>Quick Demo Sign In (1-Click):</span>
+                    <span className="text-[10px] text-cyan-400 font-mono">SEVA FIRST 2026</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDemoLogin('admin')}
+                      className="px-3 py-2 rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 border border-cyan-400/40 text-[11px] font-bold text-cyan-200 transition-all text-left flex flex-col"
+                    >
+                      <span className="text-white flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-cyan-400" />
+                        Admin Portal
+                      </span>
+                      <span className="text-[10px] text-cyan-400/90 font-mono mt-0.5">admin@gmc.gov.in</span>
+                      <span className="text-[9px] text-slate-400 font-mono">Pass: admin123</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleQuickDemoLogin('operator')}
+                      className="px-3 py-2 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 border border-blue-400/40 text-[11px] font-bold text-blue-200 transition-all text-left flex flex-col"
+                    >
+                      <span className="text-white flex items-center gap-1">
+                        <span className="h-2 w-2 rounded-full bg-blue-400" />
+                        Operator Portal
+                      </span>
+                      <span className="text-[10px] text-blue-400/90 font-mono mt-0.5">operator@gmc.gov.in</span>
+                      <span className="text-[9px] text-slate-400 font-mono">Pass: operator123</span>
+                    </button>
                   </div>
                 </div>
               </div>

@@ -42,7 +42,7 @@ const INITIAL_USERS: StoredUserAccount[] = [
     id: 'USR-GMC-ADMIN-01',
     email: 'admin@gmc.gov.in',
     fullName: 'Municipal Commissioner / Admin',
-    passwordHash: 'GmcAdmin@2026', // also verified via hash helper
+    passwordHash: 'admin123',
     salt: 'gmc_salt_admin_2026',
     role: 'administrator',
     organization: 'Gandhidham Municipal Corporation',
@@ -52,7 +52,7 @@ const INITIAL_USERS: StoredUserAccount[] = [
     id: 'USR-GMC-OPERATOR-01',
     email: 'operator@gmc.gov.in',
     fullName: 'Shift Engineer (Zone 1)',
-    passwordHash: 'GmcOperator@2026', // also verified via hash helper
+    passwordHash: 'operator123',
     salt: 'gmc_salt_operator_2026',
     role: 'operator',
     organization: 'Gandhidham Municipal Corporation',

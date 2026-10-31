@@ -18,6 +18,7 @@ import { ControllersPage } from './pages/ControllersPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { ShieldAlert } from 'lucide-react';
+import { UserRole } from './types/auth';
 
 const ALLOWED_OPERATOR_PAGES: PageId[] = ['map', 'streetlights', 'details', 'faults'];
 
@@ -82,9 +83,10 @@ const MainLayout: React.FC = () => {
     window.location.hash = newPage;
   };
 
-  const handleEnterDashboard = () => {
+  const handleEnterDashboard = (roleOverride?: UserRole) => {
     setViewMode('dashboard');
-    const defaultPage = isAdmin ? 'overview' : 'map';
+    const role = roleOverride || (isAdmin ? 'administrator' : (user?.role || 'operator'));
+    const defaultPage = role === 'administrator' ? 'overview' : 'map';
     setActivePage(defaultPage);
     window.location.hash = defaultPage;
   };

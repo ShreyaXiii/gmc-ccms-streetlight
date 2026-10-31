@@ -15,12 +15,12 @@ import {
 } from 'lucide-react';
 
 export const ControllersPage: React.FC = () => {
-  const { controllers, streetlights, lastTelemetryTime, ambientLightLux } = useCCMS();
+  const { controllers, streetlights, lastTelemetryTime, ambientLightLux, appMode, systemStatus } = useCCMS();
   const [copiedCode, setCopiedCode] = useState(false);
   const [activeTab, setActiveTab] = useState<'status' | 'pins' | 'schema' | 'firmware'>('status');
 
   const controller = controllers[0];
-  const isOnline = controller?.status === 'ONLINE';
+  const isOnline = appMode === 'demo' ? controller?.status === 'ONLINE' : systemStatus === 'CONNECTED';
 
   const firmwareCode = `/**
  * ==============================================================================
@@ -270,12 +270,22 @@ void reconnectMQTT() {
               </h2>
               <span
                 className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold ${
-                  isOnline
+                  appMode === 'demo'
+                    ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+                    : systemStatus === 'CONNECTED'
                     ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                    : systemStatus === 'WAITING'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40'
                     : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
                 }`}
               >
-                ● {controller?.status || 'ONLINE'}
+                ● {appMode === 'demo'
+                  ? 'DEMO MODE'
+                  : systemStatus === 'CONNECTED'
+                  ? 'ESP32 CONNECTED'
+                  : systemStatus === 'WAITING'
+                  ? 'WAITING FOR DATA'
+                  : 'ESP32 DISCONNECTED'}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-1">

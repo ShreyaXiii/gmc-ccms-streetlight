@@ -78,14 +78,22 @@ export const Overview: React.FC<OverviewProps> = ({ onNavigate }) => {
               </h2>
               <span
                 className={`px-2 py-0.5 rounded text-[11px] font-bold font-mono uppercase ${
-                  systemStatus === 'CONNECTED'
-                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
-                    : systemStatus === 'DEMO_MODE'
+                  appMode === 'demo'
                     ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                    : systemStatus === 'CONNECTED'
+                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                    : systemStatus === 'WAITING'
+                    ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                     : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                 }`}
               >
-                ● {systemStatus.replace('_', ' ')}
+                ● {appMode === 'demo'
+                  ? 'DEMO MODE'
+                  : systemStatus === 'CONNECTED'
+                  ? 'ESP32 CONNECTED'
+                  : systemStatus === 'WAITING'
+                  ? 'WAITING FOR DATA'
+                  : 'ESP32 DISCONNECTED'}
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">

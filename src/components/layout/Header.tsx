@@ -125,20 +125,27 @@ export const Header: React.FC<HeaderProps> = ({
 
         {/* ESP32 Heartbeat Indicator */}
         <div className="flex items-center gap-2 rounded-lg bg-slate-900/90 border border-slate-800 px-3 py-1.5 text-xs">
-          {systemStatus === 'CONNECTED' ? (
-            <>
-              <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="hidden sm:inline font-semibold text-emerald-400">ESP32 Online</span>
-            </>
-          ) : systemStatus === 'DEMO_MODE' ? (
+          {appMode === 'real' ? (
+            systemStatus === 'CONNECTED' ? (
+              <>
+                <span className="flex h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
+                <span className="font-semibold text-emerald-400">ESP32 Connected</span>
+              </>
+            ) : systemStatus === 'WAITING' ? (
+              <>
+                <span className="flex h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+                <span className="font-semibold text-amber-400">Waiting for Data</span>
+              </>
+            ) : (
+              <>
+                <span className="flex h-2 w-2 rounded-full bg-rose-500" />
+                <span className="font-semibold text-rose-400">ESP32 Disconnected</span>
+              </>
+            )
+          ) : (
             <>
               <span className="flex h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
               <span className="font-semibold text-cyan-400">DEMO RIG</span>
-            </>
-          ) : (
-            <>
-              <span className="flex h-2 w-2 rounded-full bg-rose-500" />
-              <span className="font-semibold text-rose-400">ESP32 Offline</span>
             </>
           )}
 

@@ -46,11 +46,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const { user, logout, isAdmin } = useAuth();
 
-  const navItems = [
+  const allNavItems = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard },
     { id: 'monitoring', label: 'Live Monitoring', icon: Activity },
-    { id: 'streetlights', label: 'Streetlights', icon: Lightbulb },
     { id: 'map', label: 'Gandhidham Map', icon: MapPin },
+    { id: 'streetlights', label: 'Streetlights', icon: Lightbulb },
     {
       id: 'faults',
       label: 'Faults & Alerts',
@@ -63,6 +63,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     { id: 'reports', label: 'Reports & Export', icon: FileSpreadsheet },
     { id: 'settings', label: 'Settings & Security', icon: Settings },
   ];
+
+  // Operator has strictly access to only: Gandhidham Map, Streetlight, Fault & Alerts
+  const navItems = isAdmin
+    ? allNavItems
+    : allNavItems.filter((item) =>
+        item.id === 'map' || item.id === 'streetlights' || item.id === 'faults'
+      );
 
   const handleNavClick = (pageId: PageId) => {
     setActivePage(pageId);
@@ -115,7 +122,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Navigation Items */}
         <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
           <div className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wider text-slate-500 font-mono">
-            Control Room Navigation
+            {isAdmin ? 'Administrator Navigation' : 'Operator Portal (Restricted)'}
           </div>
 
           {navItems.map((item) => {

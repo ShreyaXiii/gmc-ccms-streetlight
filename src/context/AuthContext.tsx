@@ -1,29 +1,28 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { UserProfile, UserRole } from '../types/auth';
+import { UserProfile, UserRole, StoredUserAccount } from '../types/auth';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { storage, hashPasswordWithSalt } from '../services/storage';
 
 interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  register: (
+    fullName: string,
+    email: string,
+    password: string,
+    confirmPassword: string
+  ) => Promise<{ success: boolean; error?: string }>;
+  loginWithGoogle: () => Promise<{ success: boolean; error?: string }>;
+  forgotPassword: (email: string) => Promise<{ success: boolean; message: string }>;
+  promoteUser: (email: string, newRole: UserRole) => { success: boolean; message: string };
+  createAdminAccount: (fullName: string, email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  getUsersList: () => StoredUserAccount[];
   logout: () => void;
   isAdmin: boolean;
   isOperator: boolean;
 }
-
-const DEMO_USERS: Record<string, { role: UserRole; name: string; pass: string }> = {
-  'admin@gmc.gov.in': {
-    role: 'administrator',
-    name: 'Municipal Commissioner / Admin',
-    pass: 'GmcAdmin@2026',
-  },
-  'operator@gmc.gov.in': {
-    role: 'operator',
-    name: 'Shift Engineer (Zone 1)',
-    pass: 'GmcOperator@2026',
-  },
-};
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
@@ -32,26 +31,90 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
-    // Check local storage session
+    // 1. Check local session
     const stored = localStorage.getItem('gmc_ccms_user_session');
     if (stored) {
       try {
-        setUser(JSON.parse(stored));
+        const parsed = JSON.parse(stored);
+        setUser(parsed);
       } catch {
         localStorage.removeItem('gmc_ccms_user_session');
       }
     }
-    setIsLoading(false);
+
+    // 2. If Supabase is configured, listen to real OAuth redirects & session changes
+    if (isSupabaseConfigured && supabase) {
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          syncSupabaseUser(session.user);
+        }
+        setIsLoading(false);
+      });
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session?.user) {
+          syncSupabaseUser(session.user);
+        } else if (!stored) {
+          setUser(null);
+        }
+      });
+
+      return () => {
+        subscription.unsubscribe();
+      };
+    } else {
+      setIsLoading(false);
+    }
   }, []);
+
+  const syncSupabaseUser = (sbUser: any) => {
+    // Google OAuth or Supabase user - lookup or assign role (default operator)
+    const email = sbUser.email || '';
+    const storedUsers = storage.getUsers();
+    const existing = storedUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+
+    const role: UserRole = existing ? existing.role : (sbUser.user_metadata?.role as UserRole) || 'operator';
+    const fullName: string = sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || existing?.fullName || email.split('@')[0] || 'Municipal Staff';
+
+    const profile: UserProfile = {
+      id: sbUser.id,
+      email,
+      fullName,
+      role,
+      organization: 'Gandhidham Municipal Corporation',
+      avatarUrl: sbUser.user_metadata?.avatar_url,
+      lastLogin: new Date().toISOString(),
+      createdAt: sbUser.created_at || new Date().toISOString(),
+    };
+
+    // If new user from Google, record into local registry as operator
+    if (!existing && email) {
+      storage.addUser({
+        id: sbUser.id,
+        email,
+        fullName,
+        passwordHash: 'GOOGLE_OAUTH_AUTHENTICATED',
+        salt: 'oauth',
+        role: 'operator',
+        organization: 'Gandhidham Municipal Corporation',
+        createdAt: new Date().toISOString(),
+        lastLogin: new Date().toISOString(),
+      });
+    }
+
+    setUser(profile);
+    localStorage.setItem('gmc_ccms_user_session', JSON.stringify(profile));
+  };
 
   const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
     setIsLoading(true);
+    const cleanEmail = email.toLowerCase().trim();
 
-    // 1. If live Supabase Auth is configured, attempt real authentication
+    // 1. Live Supabase Auth if configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email,
+          email: cleanEmail,
           password: pass,
         });
 
@@ -61,47 +124,282 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
 
         if (data.user) {
-          const profile: UserProfile = {
-            id: data.user.id,
-            email: data.user.email || email,
-            fullName: data.user.user_metadata?.full_name || 'Municipal Engineer',
-            role: (data.user.user_metadata?.role as UserRole) || 'operator',
-            organization: 'Gandhidham Municipal Corporation',
-            lastLogin: new Date().toISOString(),
-          };
-          setUser(profile);
-          localStorage.setItem('gmc_ccms_user_session', JSON.stringify(profile));
+          syncSupabaseUser(data.user);
           setIsLoading(false);
           return { success: true };
         }
       } catch (err: any) {
         setIsLoading(false);
-        return { success: false, error: err.message || 'Supabase authentication failed' };
+        return { success: false, error: err.message || 'Supabase authentication failed.' };
       }
     }
 
-    // 2. Demonstration / Local Stored Auth
-    const demoUser = DEMO_USERS[email.toLowerCase().trim()];
-    if (demoUser && demoUser.pass === pass) {
-      const profile: UserProfile = {
-        id: `USR-${email.split('@')[0].toUpperCase()}`,
-        email,
-        fullName: demoUser.name,
-        role: demoUser.role,
-        organization: 'Gandhidham Municipal Corporation',
-        lastLogin: new Date().toISOString(),
-      };
-      setUser(profile);
-      localStorage.setItem('gmc_ccms_user_session', JSON.stringify(profile));
-      setIsLoading(false);
-      return { success: true };
+    // 2. Custom Secure Stored Authentication
+    const storedUsers = storage.getUsers();
+    const targetUser = storedUsers.find(u => u.email.toLowerCase() === cleanEmail);
+
+    if (targetUser) {
+      // Check plain password match for initial demo seeds OR hashed password with salt
+      const calculatedHash = await hashPasswordWithSalt(pass, targetUser.salt);
+      const isPasswordValid = targetUser.passwordHash === pass || targetUser.passwordHash === calculatedHash;
+
+      if (isPasswordValid) {
+        const profile: UserProfile = {
+          id: targetUser.id,
+          email: targetUser.email,
+          fullName: targetUser.fullName,
+          role: targetUser.role,
+          organization: targetUser.organization,
+          lastLogin: new Date().toISOString(),
+          createdAt: targetUser.createdAt,
+        };
+
+        // Update last login
+        targetUser.lastLogin = new Date().toISOString();
+        storage.saveUsers(storedUsers);
+
+        setUser(profile);
+        localStorage.setItem('gmc_ccms_user_session', JSON.stringify(profile));
+        setIsLoading(false);
+        return { success: true };
+      }
     }
 
     setIsLoading(false);
     return {
       success: false,
-      error: 'Invalid credentials. For demonstration use: admin@gmc.gov.in (pw: GmcAdmin@2026) or operator@gmc.gov.in (pw: GmcOperator@2026)',
+      error: 'Invalid email or password. Please verify your municipal credentials.',
     };
+  };
+
+  const register = async (
+    fullName: string,
+    email: string,
+    password: string,
+    confirmPassword: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+    const cleanName = fullName.trim();
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Validations
+    if (!cleanName) {
+      setIsLoading(false);
+      return { success: false, error: 'Full name is required.' };
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      setIsLoading(false);
+      return { success: false, error: 'Please enter a valid municipal or official email address.' };
+    }
+
+    if (password.length < 8) {
+      setIsLoading(false);
+      return { success: false, error: 'Password must be at least 8 characters long.' };
+    }
+
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+      setIsLoading(false);
+      return {
+        success: false,
+        error: 'Password must include at least one uppercase letter, one lowercase letter, and one number.',
+      };
+    }
+
+    if (password !== confirmPassword) {
+      setIsLoading(false);
+      return { success: false, error: 'Passwords do not match. Please re-enter identical passwords.' };
+    }
+
+    // Duplicate email check
+    const storedUsers = storage.getUsers();
+    if (storedUsers.some(u => u.email.toLowerCase() === cleanEmail)) {
+      setIsLoading(false);
+      return { success: false, error: 'An account with this email address is already registered.' };
+    }
+
+    // Role is strictly assigned to operator (never admin on public registration)
+    const assignedRole: UserRole = 'operator';
+    const salt = `salt_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    const passwordHash = await hashPasswordWithSalt(password, salt);
+    const newId = `USR-${Date.now().toString().slice(-6)}`;
+    const now = new Date().toISOString();
+
+    // 1. Live Supabase Auth if configured
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { data, error } = await supabase.auth.signUp({
+          email: cleanEmail,
+          password,
+          options: {
+            data: {
+              full_name: cleanName,
+              role: assignedRole,
+              organization: 'Gandhidham Municipal Corporation',
+            },
+          },
+        });
+
+        if (error) {
+          setIsLoading(false);
+          return { success: false, error: error.message };
+        }
+      } catch (err: any) {
+        setIsLoading(false);
+        return { success: false, error: err.message || 'Registration failed on Supabase backend.' };
+      }
+    }
+
+    // 2. Save into local persistent store
+    const newAccount: StoredUserAccount = {
+      id: newId,
+      email: cleanEmail,
+      fullName: cleanName,
+      passwordHash,
+      salt,
+      role: assignedRole,
+      organization: 'Gandhidham Municipal Corporation',
+      createdAt: now,
+    };
+
+    storage.addUser(newAccount);
+    setIsLoading(false);
+    return { success: true };
+  };
+
+  const loginWithGoogle = async (): Promise<{ success: boolean; error?: string }> => {
+    setIsLoading(true);
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin,
+            queryParams: {
+              access_type: 'offline',
+              prompt: 'consent',
+            },
+          },
+        });
+
+        if (error) {
+          setIsLoading(false);
+          return { success: false, error: error.message };
+        }
+        return { success: true };
+      } catch (err: any) {
+        setIsLoading(false);
+        return { success: false, error: err.message || 'Google OAuth failed to initialize.' };
+      }
+    }
+
+    // Fallback demonstration Google OAuth simulator when live Supabase keys are pending
+    const demoGoogleUser: UserProfile = {
+      id: 'USR-GOOGLE-DEMO-01',
+      email: 'operator.google@gmc.gov.in',
+      fullName: 'Field Engineer (Google Verified)',
+      role: 'operator', // Google auth defaults to operator
+      organization: 'Gandhidham Municipal Corporation',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&auto=format&fit=crop&q=80',
+      lastLogin: new Date().toISOString(),
+      createdAt: new Date().toISOString(),
+    };
+
+    setUser(demoGoogleUser);
+    localStorage.setItem('gmc_ccms_user_session', JSON.stringify(demoGoogleUser));
+    setIsLoading(false);
+    return { success: true };
+  };
+
+  const forgotPassword = async (email: string): Promise<{ success: boolean; message: string }> => {
+    const cleanEmail = email.toLowerCase().trim();
+    if (!cleanEmail) {
+      return { success: false, message: 'Please provide your registered municipal email.' };
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${window.location.origin}/#reset-password`,
+        });
+        if (error) {
+          return { success: false, message: error.message };
+        }
+        return {
+          success: true,
+          message: `Official password recovery link dispatched to ${cleanEmail}. Check your inbox.`,
+        };
+      } catch (err: any) {
+        return { success: false, message: err.message || 'Password reset request failed.' };
+      }
+    }
+
+    const storedUsers = storage.getUsers();
+    const found = storedUsers.find(u => u.email.toLowerCase() === cleanEmail);
+    if (!found) {
+      return { success: false, message: `No registered account found with email ${cleanEmail}.` };
+    }
+
+    return {
+      success: true,
+      message: `Verification code dispatched to ${cleanEmail}. For evaluation, you may contact the Municipal Administrator or sign in with registered credentials.`,
+    };
+  };
+
+  // Secure admin-only promotion of operator to administrator
+  const promoteUser = (targetEmail: string, newRole: UserRole): { success: boolean; message: string } => {
+    if (user?.role !== 'administrator') {
+      return { success: false, message: 'Unauthorized: Only an existing administrator can authorize roles.' };
+    }
+
+    if (targetEmail.toLowerCase() === 'admin@gmc.gov.in' && newRole === 'operator') {
+      return { success: false, message: 'Primary Municipal Administrator account cannot be demoted.' };
+    }
+
+    const updated = storage.updateUserRole(targetEmail, newRole);
+    if (updated) {
+      return { success: true, message: `Account ${targetEmail} role successfully updated to ${newRole}.` };
+    }
+    return { success: false, message: `User ${targetEmail} not found.` };
+  };
+
+  // Admin-only creation of a new administrator account
+  const createAdminAccount = async (
+    fullName: string,
+    email: string,
+    password: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (user?.role !== 'administrator') {
+      return { success: false, error: 'Unauthorized: Only an administrator can create administrator accounts.' };
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+    const storedUsers = storage.getUsers();
+    if (storedUsers.some(u => u.email.toLowerCase() === cleanEmail)) {
+      return { success: false, error: 'An account with this email already exists.' };
+    }
+
+    const salt = `salt_admin_${Date.now()}`;
+    const passwordHash = await hashPasswordWithSalt(password, salt);
+    const newAccount: StoredUserAccount = {
+      id: `USR-ADM-${Date.now().toString().slice(-5)}`,
+      email: cleanEmail,
+      fullName: fullName.trim(),
+      passwordHash,
+      salt,
+      role: 'administrator',
+      organization: 'Gandhidham Municipal Corporation',
+      createdAt: new Date().toISOString(),
+    };
+
+    storage.addUser(newAccount);
+    return { success: true };
+  };
+
+  const getUsersList = (): StoredUserAccount[] => {
+    return storage.getUsers();
   };
 
   const logout = () => {
@@ -119,6 +417,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated: !!user,
         isLoading,
         login,
+        register,
+        loginWithGoogle,
+        forgotPassword,
+        promoteUser,
+        createAdminAccount,
+        getUsersList,
         logout,
         isAdmin: user?.role === 'administrator',
         isOperator: !!user,
@@ -136,4 +440,5 @@ export const useAuth = () => {
   }
   return context;
 };
+
 

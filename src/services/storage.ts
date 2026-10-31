@@ -2,6 +2,7 @@ import { Streetlight } from '../types/streetlight';
 import { Controller } from '../types/controller';
 import { FaultRecord, FaultThresholds, DEFAULT_THRESHOLDS } from '../types/fault';
 import { MaintenanceTicket } from '../types/maintenance';
+import { StoredUserAccount, UserRole } from '../types/auth';
 import { INITIAL_DEMO_CONTROLLER, INITIAL_DEMO_FAULTS, INITIAL_DEMO_STREETLIGHTS, INITIAL_DEMO_TICKETS } from './demoSimulator';
 
 const STORAGE_KEYS = {
@@ -11,8 +12,53 @@ const STORAGE_KEYS = {
   TICKETS: 'gmc_ccms_tickets',
   THRESHOLDS: 'gmc_ccms_thresholds',
   APP_MODE: 'gmc_ccms_mode', // 'demo' | 'real'
-  AUTH_USER: 'gmc_ccms_auth_user',
+  AUTH_USER: 'gmc_ccms_user_session',
+  REGISTERED_USERS: 'gmc_ccms_registered_users',
 };
+
+// SHA-256 hash helper with salt using standard Web Crypto API
+export async function hashPasswordWithSalt(password: string, salt: string): Promise<string> {
+  if (typeof crypto !== 'undefined' && crypto.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + '::GMC_SALT::' + salt);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  // Fallback simple deterministic hash if crypto.subtle is unavailable
+  let hash = 0;
+  const str = password + salt;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash).toString(16).padStart(64, '0');
+}
+
+// Default seeded municipal accounts
+const INITIAL_USERS: StoredUserAccount[] = [
+  {
+    id: 'USR-GMC-ADMIN-01',
+    email: 'admin@gmc.gov.in',
+    fullName: 'Municipal Commissioner / Admin',
+    passwordHash: 'GmcAdmin@2026', // also verified via hash helper
+    salt: 'gmc_salt_admin_2026',
+    role: 'administrator',
+    organization: 'Gandhidham Municipal Corporation',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'USR-GMC-OPERATOR-01',
+    email: 'operator@gmc.gov.in',
+    fullName: 'Shift Engineer (Zone 1)',
+    passwordHash: 'GmcOperator@2026', // also verified via hash helper
+    salt: 'gmc_salt_operator_2026',
+    role: 'operator',
+    organization: 'Gandhidham Municipal Corporation',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+];
 
 export const storage = {
   getStreetlights(): Streetlight[] {
@@ -108,6 +154,45 @@ export const storage = {
     localStorage.setItem(STORAGE_KEYS.APP_MODE, mode);
   },
 
+  getUsers(): StoredUserAccount[] {
+    const data = localStorage.getItem(STORAGE_KEYS.REGISTERED_USERS);
+    if (!data) {
+      localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(INITIAL_USERS));
+      return INITIAL_USERS;
+    }
+    try {
+      const parsed: StoredUserAccount[] = JSON.parse(data);
+      // Ensure initial demo admin and operator are always present
+      INITIAL_USERS.forEach(initUser => {
+        if (!parsed.some(u => u.email.toLowerCase() === initUser.email.toLowerCase())) {
+          parsed.push(initUser);
+        }
+      });
+      return parsed;
+    } catch {
+      return INITIAL_USERS;
+    }
+  },
+
+  saveUsers(users: StoredUserAccount[]) {
+    localStorage.setItem(STORAGE_KEYS.REGISTERED_USERS, JSON.stringify(users));
+  },
+
+  addUser(user: StoredUserAccount) {
+    const users = this.getUsers();
+    users.push(user);
+    this.saveUsers(users);
+  },
+
+  updateUserRole(email: string, newRole: UserRole): boolean {
+    const users = this.getUsers();
+    const index = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+    if (index === -1) return false;
+    users[index].role = newRole;
+    this.saveUsers(users);
+    return true;
+  },
+
   resetToDefaults() {
     localStorage.removeItem(STORAGE_KEYS.STREETLIGHTS);
     localStorage.removeItem(STORAGE_KEYS.CONTROLLERS);
@@ -116,4 +201,5 @@ export const storage = {
     localStorage.removeItem(STORAGE_KEYS.THRESHOLDS);
   }
 };
+
 

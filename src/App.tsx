@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CCMSProvider, useCCMS } from './context/CCMSContext';
 import { Sidebar, PageId } from './components/layout/Sidebar';
@@ -16,14 +16,47 @@ import { MaintenancePage } from './pages/MaintenancePage';
 import { ControllersPage } from './pages/ControllersPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
+import { ShieldAlert } from 'lucide-react';
+
+const ALLOWED_OPERATOR_PAGES: PageId[] = ['map', 'streetlights', 'details', 'faults'];
 
 const MainLayout: React.FC = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, isAdmin, user } = useAuth();
   const { faults } = useCCMS();
 
-  const [activePage, setActivePage] = useState<PageId>('overview');
+  // Initial page: Admin starts at Overview, Operator starts at Gandhidham Map
+  const [activePage, setActivePage] = useState<PageId>(() => (isAdmin ? 'overview' : 'map'));
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [selectedLightId, setSelectedLightId] = useState<string>('SL-GMC-001');
+
+  // Enforce role-based route guard and URL sync
+  useEffect(() => {
+    if (isAuthenticated) {
+      // Check window.location.hash on load
+      const hashPage = window.location.hash.replace('#', '') as PageId;
+      if (hashPage) {
+        if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(hashPage)) {
+          setActivePage('map');
+          window.location.hash = 'map';
+        } else if (isAdmin || ALLOWED_OPERATOR_PAGES.includes(hashPage)) {
+          setActivePage(hashPage);
+        }
+      } else {
+        setActivePage(isAdmin ? 'overview' : 'map');
+      }
+    }
+  }, [isAdmin, isAuthenticated]);
+
+  // Synchronize hash with active page and verify authorization
+  const handlePageChange = (newPage: PageId) => {
+    if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(newPage)) {
+      setActivePage('map');
+      window.location.hash = 'map';
+      return;
+    }
+    setActivePage(newPage);
+    window.location.hash = newPage;
+  };
 
   if (isLoading) {
     return (
@@ -46,22 +79,43 @@ const MainLayout: React.FC = () => {
 
   const handleNavigateToDetails = (lightId: string) => {
     setSelectedLightId(lightId);
-    setActivePage('details');
+    handlePageChange('details');
   };
 
   const handleNavigateToMap = (lightId?: string) => {
     if (lightId) setSelectedLightId(lightId);
-    setActivePage('map');
+    handlePageChange('map');
   };
 
   const renderActivePage = () => {
+    // Role-based authorization gate: operators cannot view admin pages
+    if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(activePage)) {
+      return (
+        <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-8 text-center my-8">
+          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400 mb-3 border border-rose-500/30">
+            <ShieldAlert className="h-6 w-6" />
+          </div>
+          <h3 className="text-base font-bold text-white">Administrator Privileges Required</h3>
+          <p className="text-xs text-slate-300 mt-1 max-w-md mx-auto">
+            Your current account ({user?.email}) has the <span className="font-semibold text-cyan-400">Field Operator</span> role. Access to municipal settings, analytics, reports, maintenance, and hardware management is restricted to Administrators.
+          </p>
+          <button
+            onClick={() => handlePageChange('map')}
+            className="mt-5 px-4 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition-all"
+          >
+            Return to Gandhidham Map
+          </button>
+        </div>
+      );
+    }
+
     switch (activePage) {
       case 'overview':
         return (
           <Overview
             onNavigate={(page, extraId) => {
               if (extraId) setSelectedLightId(extraId);
-              setActivePage(page);
+              handlePageChange(page);
             }}
           />
         );
@@ -73,7 +127,7 @@ const MainLayout: React.FC = () => {
         return (
           <StreetlightDetails
             lightId={selectedLightId}
-            onBack={() => setActivePage('streetlights')}
+            onBack={() => handlePageChange('streetlights')}
             onNavigateToMap={handleNavigateToMap}
           />
         );
@@ -85,7 +139,7 @@ const MainLayout: React.FC = () => {
           />
         );
       case 'faults':
-        return <FaultsPage onNavigateToMaintenance={() => setActivePage('maintenance')} />;
+        return <FaultsPage onNavigateToMaintenance={() => handlePageChange(isAdmin ? 'maintenance' : 'faults')} />;
       case 'energy':
         return <EnergyPage />;
       case 'maintenance':
@@ -97,12 +151,17 @@ const MainLayout: React.FC = () => {
       case 'settings':
         return <SettingsPage />;
       default:
-        return (
+        return isAdmin ? (
           <Overview
             onNavigate={(page, extraId) => {
               if (extraId) setSelectedLightId(extraId);
-              setActivePage(page);
+              handlePageChange(page);
             }}
+          />
+        ) : (
+          <MapPage
+            onNavigateToDetails={handleNavigateToDetails}
+            focusedLightId={selectedLightId}
           />
         );
     }
@@ -117,7 +176,7 @@ const MainLayout: React.FC = () => {
         {/* Responsive Municipal Sidebar */}
         <Sidebar
           activePage={activePage}
-          setActivePage={setActivePage}
+          setActivePage={handlePageChange}
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           unresolvedFaultCount={unackFaultCount}
@@ -129,7 +188,7 @@ const MainLayout: React.FC = () => {
           <Header
             activePage={activePage}
             onOpenSidebar={() => setSidebarOpen(true)}
-            onNavigateToFaults={() => setActivePage('faults')}
+            onNavigateToFaults={() => handlePageChange('faults')}
           />
 
           {/* Page Body */}

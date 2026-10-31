@@ -235,14 +235,16 @@ export const Streetlights: React.FC<StreetlightsProps> = ({ onNavigateToDetails 
             CSV
           </button>
 
-          {/* Add Streetlight (Admin Only or Operator) */}
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold shadow-glow-cyan transition-all"
-          >
-            <Plus className="h-4 w-4" />
-            Add Streetlight
-          </button>
+          {/* Add Streetlight (Admin Only) */}
+          {isAdmin && (
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white text-xs font-semibold shadow-glow-cyan transition-all"
+            >
+              <Plus className="h-4 w-4" />
+              Add Streetlight
+            </button>
+          )}
         </div>
       </div>
 
@@ -360,23 +362,27 @@ export const Streetlights: React.FC<StreetlightsProps> = ({ onNavigateToDetails 
                             <Eye className="h-4 w-4" />
                           </button>
 
-                          {/* Edit */}
-                          <button
-                            onClick={() => handleOpenEdit(light)}
-                            className="p-1.5 rounded text-slate-400 hover:bg-slate-800 hover:text-amber-400 transition-colors"
-                            title="Edit Streetlight Metadata"
-                          >
-                            <Edit2 className="h-4 w-4" />
-                          </button>
+                          {/* Edit (Admin only) */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleOpenEdit(light)}
+                              className="p-1.5 rounded text-slate-400 hover:bg-slate-800 hover:text-amber-400 transition-colors"
+                              title="Edit Streetlight Metadata"
+                            >
+                              <Edit2 className="h-4 w-4" />
+                            </button>
+                          )}
 
-                          {/* Delete */}
-                          <button
-                            onClick={() => handleDelete(light)}
-                            className="p-1.5 rounded text-slate-500 hover:bg-rose-950/40 hover:text-rose-400 transition-colors"
-                            title="Delete Streetlight"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          {/* Delete (Admin only) */}
+                          {isAdmin && (
+                            <button
+                              onClick={() => handleDelete(light)}
+                              className="p-1.5 rounded text-slate-500 hover:bg-rose-950/40 hover:text-rose-400 transition-colors"
+                              title="Delete Streetlight"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>

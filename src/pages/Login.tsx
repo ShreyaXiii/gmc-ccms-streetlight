@@ -16,7 +16,11 @@ import {
 } from 'lucide-react';
 import { isSupabaseConfigured, getSupabaseStatus } from '../services/supabaseClient';
 
-export const Login: React.FC = () => {
+interface LoginProps {
+  onReturnToLanding?: () => void;
+}
+
+export const Login: React.FC<LoginProps> = ({ onReturnToLanding }) => {
   const { login, register, loginWithGoogle, forgotPassword, isLoading } = useAuth();
   const [authMode, setAuthMode] = useState<'signin' | 'register'>('signin');
 
@@ -127,6 +131,16 @@ export const Login: React.FC = () => {
       <div className="absolute bottom-10 right-10 w-96 h-96 bg-blue-600/10 rounded-full blur-[120px] pointer-events-none" />
 
       <div className="w-full max-w-md z-10">
+        {onReturnToLanding && (
+          <div className="mb-4 text-center">
+            <button
+              onClick={onReturnToLanding}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-colors shadow-sm"
+            >
+              <span>← Back to Public Landing Page</span>
+            </button>
+          </div>
+        )}
         {/* Emblem & Title */}
         <div className="text-center mb-6">
           <div className="inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-tr from-cyan-500 to-blue-600 p-3 shadow-glow-cyan mb-3">

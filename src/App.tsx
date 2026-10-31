@@ -4,6 +4,7 @@ import { CCMSProvider, useCCMS } from './context/CCMSContext';
 import { Sidebar, PageId } from './components/layout/Sidebar';
 import { Header } from './components/layout/Header';
 import { DemoControlBar } from './components/layout/DemoControlBar';
+import { LandingPage } from './pages/LandingPage';
 import { Login } from './pages/Login';
 import { Overview } from './pages/Overview';
 import { MonitoringPage } from './pages/MonitoringPage';
@@ -24,30 +25,53 @@ const MainLayout: React.FC = () => {
   const { isAuthenticated, isLoading, isAdmin, user } = useAuth();
   const { faults } = useCCMS();
 
-  // Initial page: Admin starts at Overview, Operator starts at Gandhidham Map
+  // Root view mode: 'landing' (the official public landing page) or 'dashboard'
+  const [viewMode, setViewMode] = useState<'landing' | 'dashboard'>(() => {
+    const hash = window.location.hash.replace('#', '');
+    if (hash && hash !== 'home' && hash !== 'landing') {
+      return 'dashboard';
+    }
+    return 'landing';
+  });
+
+  // Initial dashboard page: Admin starts at Overview, Operator starts at Gandhidham Map
   const [activePage, setActivePage] = useState<PageId>(() => (isAdmin ? 'overview' : 'map'));
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [selectedLightId, setSelectedLightId] = useState<string>('SL-GMC-001');
 
   // Enforce role-based route guard and URL sync
   useEffect(() => {
-    if (isAuthenticated) {
-      // Check window.location.hash on load
-      const hashPage = window.location.hash.replace('#', '') as PageId;
-      if (hashPage) {
-        if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(hashPage)) {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '') as PageId | 'home' | 'landing' | 'dashboard';
+      if (!hash || hash === 'home' || hash === 'landing') {
+        setViewMode('landing');
+      } else {
+        setViewMode('dashboard');
+        const targetPage = hash === 'dashboard' ? (isAdmin ? 'overview' : 'map') : (hash as PageId);
+        if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(targetPage)) {
           setActivePage('map');
           window.location.hash = 'map';
-        } else if (isAdmin || ALLOWED_OPERATOR_PAGES.includes(hashPage)) {
-          setActivePage(hashPage);
+        } else {
+          setActivePage(targetPage);
         }
-      } else {
-        setActivePage(isAdmin ? 'overview' : 'map');
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, [isAdmin]);
+
+  // Synchronize active page when authentication state or role updates
+  useEffect(() => {
+    if (viewMode === 'dashboard') {
+      if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(activePage)) {
+        setActivePage('map');
+        window.location.hash = 'map';
       }
     }
-  }, [isAdmin, isAuthenticated]);
+  }, [isAdmin, viewMode]);
 
-  // Synchronize hash with active page and verify authorization
+  // Handle dashboard page navigation
   const handlePageChange = (newPage: PageId) => {
     if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(newPage)) {
       setActivePage('map');
@@ -58,12 +82,30 @@ const MainLayout: React.FC = () => {
     window.location.hash = newPage;
   };
 
+  const handleEnterDashboard = () => {
+    setViewMode('dashboard');
+    const defaultPage = isAdmin ? 'overview' : 'map';
+    setActivePage(defaultPage);
+    window.location.hash = defaultPage;
+  };
+
+  const handleOpenMapFromLanding = () => {
+    setViewMode('dashboard');
+    setActivePage('map');
+    window.location.hash = 'map';
+  };
+
+  const handleReturnToLanding = () => {
+    setViewMode('landing');
+    window.location.hash = 'home';
+  };
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#070B14] flex items-center justify-center">
+      <div className="min-h-screen bg-[#03152D] flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="h-10 w-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-xs text-slate-400 font-mono tracking-wider">
+          <p className="text-xs text-slate-300 font-mono tracking-wider">
             INITIALIZING MUNICIPAL CCMS CONTROL ROOM...
           </p>
         </div>
@@ -71,8 +113,19 @@ const MainLayout: React.FC = () => {
     );
   }
 
+  // 1. If currently in Landing Page mode, render the exact GMC CCMS Landing Page
+  if (viewMode === 'landing') {
+    return (
+      <LandingPage
+        onEnterDashboard={handleEnterDashboard}
+        onOpenMap={handleOpenMapFromLanding}
+      />
+    );
+  }
+
+  // 2. If in Dashboard mode but unauthenticated, render the full Login / Registration portal
   if (!isAuthenticated) {
-    return <Login />;
+    return <Login onReturnToLanding={handleReturnToLanding} />;
   }
 
   const unackFaultCount = faults.filter((f) => f.status === 'UNACKNOWLEDGED').length;
@@ -180,6 +233,7 @@ const MainLayout: React.FC = () => {
           isOpen={sidebarOpen}
           onClose={() => setSidebarOpen(false)}
           unresolvedFaultCount={unackFaultCount}
+          onNavigateToLanding={handleReturnToLanding}
         />
 
         {/* Main Content Area */}
@@ -210,4 +264,3 @@ export default function App() {
     </AuthProvider>
   );
 }
-

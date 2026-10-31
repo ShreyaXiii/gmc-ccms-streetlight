@@ -13,6 +13,7 @@ import {
   LogOut,
   Shield,
   X,
+  Globe,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -35,6 +36,7 @@ interface SidebarProps {
   isOpen: boolean;
   onClose: () => void;
   unresolvedFaultCount: number;
+  onNavigateToLanding?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -43,6 +45,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   isOpen,
   onClose,
   unresolvedFaultCount,
+  onNavigateToLanding,
 }) => {
   const { user, logout, isAdmin } = useAuth();
 
@@ -181,6 +184,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <LogOut className="h-4 w-4" />
             </button>
           </div>
+
+          {onNavigateToLanding && (
+            <button
+              onClick={onNavigateToLanding}
+              className="w-full flex items-center justify-center gap-2 py-2 mb-2.5 rounded-lg bg-[#07172C] hover:bg-[#0A2244] border border-cyan-500/30 text-xs font-semibold text-cyan-400 hover:text-cyan-300 transition-all shadow-sm"
+            >
+              <Globe className="h-3.5 w-3.5" />
+              <span>View Public Landing Page</span>
+            </button>
+          )}
 
           <div className="rounded bg-slate-900/90 border border-slate-800/80 px-2.5 py-1.5 text-[10px] text-slate-400 flex items-center justify-between font-mono">
             <span>SEVA FIRST 2026</span>

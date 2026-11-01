@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+﻿import React, { createContext, useContext, useState, useEffect } from 'react';
 import { UserProfile, UserRole, StoredUserAccount } from '../types/auth';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
 import { storage, hashPasswordWithSalt } from '../services/storage';
@@ -73,7 +73,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const storedUsers = storage.getUsers();
     const existing = storedUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
 
-    const role: UserRole = existing ? existing.role : (sbUser.user_metadata?.role as UserRole) || 'operator';
+    const appRole = sbUser.app_metadata?.role;
+
+  const role: UserRole =
+    appRole === 'administrator' ? 'administrator' : 'operator';
     const fullName: string = sbUser.user_metadata?.full_name || sbUser.user_metadata?.name || existing?.fullName || email.split('@')[0] || 'Municipal Staff';
 
     const profile: UserProfile = {

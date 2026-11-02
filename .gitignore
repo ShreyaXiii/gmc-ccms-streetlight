@@ -4,3 +4,6 @@ push.bat
 push-to-github.bat
 
 
+
+.vercel
+.env*

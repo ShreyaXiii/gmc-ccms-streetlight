@@ -7,7 +7,7 @@ interface AuthContextType {
   user: UserProfile | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; role?: UserRole }>;
   register: (
     fullName: string,
     email: string,
@@ -109,7 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('gmc_ccms_user_session', JSON.stringify(profile));
   };
 
-  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string }> => {
+  const login = async (email: string, pass: string): Promise<{ success: boolean; error?: string; role?: UserRole }> => {
     setIsLoading(true);
     const cleanEmail = email.toLowerCase().trim();
 
@@ -128,8 +128,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (data.user) {
           syncSupabaseUser(data.user);
+          const authenticatedRole: UserRole =
+            data.user.app_metadata?.role === 'administrator'
+              ? 'administrator'
+              : 'operator';
           setIsLoading(false);
-          return { success: true };
+          return { success: true, role: authenticatedRole };
         }
       } catch (err: any) {
         setIsLoading(false);
@@ -503,5 +507,6 @@ export const useAuth = () => {
   }
   return context;
 };
+
 
 

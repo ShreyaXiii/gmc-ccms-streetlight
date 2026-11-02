@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { GMCLogo } from '../components/common/GMCLogo';
 import { LandingMap } from '../components/landing/LandingMap';
@@ -118,9 +118,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
     const res = await login(loginEmail, loginPassword);
     if (res.success) {
       setIsAuthModalOpen(false);
-      const session = localStorage.getItem('gmc_ccms_user_session');
-      const parsed = session ? JSON.parse(session) : null;
-      onEnterDashboard(parsed?.role);
+      onEnterDashboard(res.role);
     } else {
       setAuthError(res.error || 'Sign in failed. Please verify credentials.');
     }
@@ -234,7 +232,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
                       if (el) el.scrollIntoView({ behavior: 'smooth' });
                     } else if (item === 'How It Works') {
                       handleOpenInfo(
-                        'How It Works — IoT Architecture',
+                        'How It Works â€” IoT Architecture',
                         <div>
                           <p className="mb-2"><strong>1. Hardware Gateway:</strong> ESP32 controllers continuously monitor voltage, current, and ambient light (LDR photocell).</p>
                           <p className="mb-2"><strong>2. Real-Time Telemetry:</strong> Incoming sensor readings update the cloud control room every 2 seconds via MQTT/REST.</p>
@@ -364,7 +362,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
             {/* Small Top Pill Badge */}
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#071D39]/90 border border-slate-700/80 text-[11px] font-medium text-slate-200 shadow-sm backdrop-blur-md mb-6">
               <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_8px_#10B981]" />
-              <span>IoT Powered · Smart City Initiative</span>
+              <span>IoT Powered Â· Smart City Initiative</span>
             </div>
 
             {/* Main Bold Heading */}
@@ -600,7 +598,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
               Take Control of Smart Street Lighting
             </h2>
             <p className="text-xs sm:text-sm text-[#C7D2E0] mt-1.5 font-normal">
-              Experience the power of LUMEN – Smart, Connected, and Sustainable.
+              Experience the power of LUMEN â€“ Smart, Connected, and Sustainable.
             </p>
           </div>
 
@@ -789,7 +787,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
                           required
                           value={loginPassword}
                           onChange={(e) => setLoginPassword(e.target.value)}
-                          placeholder="••••••••"
+                          placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                           className="w-full pl-9 pr-3 py-2.5 rounded-xl bg-[#060D1A] border border-slate-700/80 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                         />
                       </div>
@@ -860,7 +858,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
                           required
                           value={regPassword}
                           onChange={(e) => setRegPassword(e.target.value)}
-                          placeholder="••••••••"
+                          placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                           className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#060D1A] border border-slate-700/80 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                         />
                       </div>
@@ -877,7 +875,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
                           required
                           value={regConfirmPassword}
                           onChange={(e) => setRegConfirmPassword(e.target.value)}
-                          placeholder="••••••••"
+                          placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢"
                           className="w-full pl-9 pr-3 py-2 rounded-xl bg-[#060D1A] border border-slate-700/80 text-white text-xs placeholder:text-slate-500 focus:outline-none focus:border-cyan-500 transition-colors"
                         />
                       </div>
@@ -1052,3 +1050,4 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onEnterDashboard, onOp
     </div>
   );
 };
+

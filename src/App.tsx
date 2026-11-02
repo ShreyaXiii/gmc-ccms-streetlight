@@ -24,6 +24,8 @@ const ALLOWED_OPERATOR_PAGES: PageId[] = ['map', 'streetlights', 'details', 'fau
 
 const MainLayout: React.FC = () => {
   const { isAuthenticated, isLoading, isAdmin, user } = useAuth();
+  const [dashboardRoleOverride, setDashboardRoleOverride] = useState<UserRole | null>(null);
+  const effectiveIsAdmin = isAdmin || dashboardRoleOverride === 'administrator';
   const { faults } = useCCMS();
 
   // Root view mode: 'landing' (the official public landing page) or 'dashboard'
@@ -36,7 +38,7 @@ const MainLayout: React.FC = () => {
   });
 
   // Initial dashboard page: Admin starts at Overview, Operator starts at Gandhidham Map
-  const [activePage, setActivePage] = useState<PageId>(() => (isAdmin ? 'overview' : 'map'));
+  const [activePage, setActivePage] = useState<PageId>(() => (effectiveIsAdmin ? 'overview' : 'map'));
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(false);
   const [selectedLightId, setSelectedLightId] = useState<string>('SL-GMC-001');
 
@@ -48,8 +50,8 @@ const MainLayout: React.FC = () => {
         setViewMode('landing');
       } else {
         setViewMode('dashboard');
-        const targetPage = hash === 'dashboard' ? (isAdmin ? 'overview' : 'map') : (hash as PageId);
-        if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(targetPage)) {
+        const targetPage = hash === 'dashboard' ? (effectiveIsAdmin ? 'overview' : 'map') : (hash as PageId);
+        if (!effectiveIsAdmin && !ALLOWED_OPERATOR_PAGES.includes(targetPage)) {
           setActivePage('map');
           window.location.hash = 'map';
         } else {
@@ -60,21 +62,21 @@ const MainLayout: React.FC = () => {
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [isAdmin]);
+  }, [effectiveIsAdmin]);
 
   // Synchronize active page when authentication state or role updates
   useEffect(() => {
     if (viewMode === 'dashboard') {
-      if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(activePage)) {
+      if (!effectiveIsAdmin && !ALLOWED_OPERATOR_PAGES.includes(activePage)) {
         setActivePage('map');
         window.location.hash = 'map';
       }
     }
-  }, [isAdmin, viewMode]);
+  }, [effectiveIsAdmin, viewMode]);
 
   // Handle dashboard page navigation
   const handlePageChange = (newPage: PageId) => {
-    if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(newPage)) {
+    if (!effectiveIsAdmin && !ALLOWED_OPERATOR_PAGES.includes(newPage)) {
       setActivePage('map');
       window.location.hash = 'map';
       return;
@@ -85,19 +87,22 @@ const MainLayout: React.FC = () => {
 
   const handleEnterDashboard = (roleOverride?: UserRole) => {
     setViewMode('dashboard');
-    const role = roleOverride || (isAdmin ? 'administrator' : (user?.role || 'operator'));
+    const role = roleOverride || (effectiveIsAdmin ? 'administrator' : (user?.role || 'operator'));
+    setDashboardRoleOverride(role);
     const defaultPage = role === 'administrator' ? 'overview' : 'map';
     setActivePage(defaultPage);
     window.location.hash = defaultPage;
   };
 
   const handleOpenMapFromLanding = () => {
+    setDashboardRoleOverride(null);
     setViewMode('dashboard');
     setActivePage('map');
     window.location.hash = 'map';
   };
 
   const handleReturnToLanding = () => {
+    setDashboardRoleOverride(null);
     setViewMode('landing');
     window.location.hash = 'home';
   };
@@ -144,7 +149,7 @@ const MainLayout: React.FC = () => {
 
   const renderActivePage = () => {
     // Role-based authorization gate: operators cannot view admin pages
-    if (!isAdmin && !ALLOWED_OPERATOR_PAGES.includes(activePage)) {
+    if (!effectiveIsAdmin && !ALLOWED_OPERATOR_PAGES.includes(activePage)) {
       return (
         <div className="rounded-xl border border-rose-500/30 bg-rose-950/20 p-8 text-center my-8">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-rose-500/10 text-rose-400 mb-3 border border-rose-500/30">
@@ -194,7 +199,7 @@ const MainLayout: React.FC = () => {
           />
         );
       case 'faults':
-        return <FaultsPage onNavigateToMaintenance={() => handlePageChange(isAdmin ? 'maintenance' : 'faults')} />;
+        return <FaultsPage onNavigateToMaintenance={() => handlePageChange(effectiveIsAdmin ? 'maintenance' : 'faults')} />;
       case 'energy':
         return <EnergyPage />;
       case 'maintenance':
@@ -206,7 +211,7 @@ const MainLayout: React.FC = () => {
       case 'settings':
         return <SettingsPage />;
       default:
-        return isAdmin ? (
+        return effectiveIsAdmin ? (
           <Overview
             onNavigate={(page, extraId) => {
               if (extraId) setSelectedLightId(extraId);

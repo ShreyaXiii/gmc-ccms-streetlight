@@ -1,12 +1,25 @@
-import { DeviceCommand, CommandStatus, ControllerTelemetryPacket, LightTelemetrySample } from '../types/telemetry';
+
+import {
+  DeviceCommand,
+  ControllerTelemetryPacket,
+  LightTelemetrySample,
+} from '../types/telemetry';
 import { storage } from './storage';
 
-export type IoTConnectionStatus = 'CONNECTED' | 'WAITING' | 'OFFLINE' | 'DEMO_MODE';
+export type IoTConnectionStatus =
+  | 'CONNECTED'
+  | 'WAITING'
+  | 'OFFLINE'
+  | 'DEMO_MODE';
 
 export interface IoTAdapter {
   mode: 'demo' | 'real';
-  sendCommand(command: Omit<DeviceCommand, 'commandId' | 'timestamp' | 'status'>): Promise<DeviceCommand>;
-  subscribeTelemetry(callback: (packet: ControllerTelemetryPacket) => void): () => void;
+  sendCommand(
+    command: Omit<DeviceCommand, 'commandId' | 'timestamp' | 'status'>
+  ): Promise<DeviceCommand>;
+  subscribeTelemetry(
+    callback: (packet: ControllerTelemetryPacket) => void
+  ): () => void;
   getConnectionStatus(): IoTConnectionStatus;
   isTelemetryFresh?(): boolean;
   resetRealMode?(): void;
@@ -14,8 +27,7 @@ export interface IoTAdapter {
 }
 
 /**
- * Demo IoT Adapter for local simulation & Hackathon presentations.
- * Simulates real network latency and controller acknowledgment handshake.
+ * Demo adapter remains unchanged for local simulation.
  */
 class DemoIoTAdapter implements IoTAdapter {
   mode: 'demo' = 'demo';
@@ -29,8 +41,12 @@ class DemoIoTAdapter implements IoTAdapter {
     return true;
   }
 
-  async sendCommand(cmdData: Omit<DeviceCommand, 'commandId' | 'timestamp' | 'status'>): Promise<DeviceCommand> {
-    const commandId = `CMD-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+  async sendCommand(
+    cmdData: Omit<DeviceCommand, 'commandId' | 'timestamp' | 'status'>
+  ): Promise<DeviceCommand> {
+    const commandId = `CMD-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2, 7)}`;
     const now = new Date().toISOString();
 
     const command: DeviceCommand = {
@@ -40,31 +56,31 @@ class DemoIoTAdapter implements IoTAdapter {
       status: 'PENDING',
     };
 
-    // Simulate network delay to controller (300ms)
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((resolve) => setTimeout(resolve, 300));
     command.status = 'ACKNOWLEDGED';
     command.acknowledgedAt = new Date().toISOString();
 
-    // Simulate physical relay actuation delay on ESP32 (400ms)
-    await new Promise(r => setTimeout(r, 400));
-    
-    // In demo mode, apply state to local storage
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
     if (command.lightId && command.payload.state) {
       const lights = storage.getStreetlights();
-      const updated = lights.map(l => {
-        if (l.id === command.lightId) {
+      const updated = lights.map((light) => {
+        if (light.id === command.lightId) {
           const newState = command.payload.state!;
-          const current = newState === 'ON' ? (0.138 + Math.random() * 0.01) : 0.00;
+          const current =
+            newState === 'ON' ? 0.138 + Math.random() * 0.01 : 0;
+
           return {
-            ...l,
+            ...light,
             state: newState,
             current,
-            power: Number((l.voltage * current).toFixed(2)),
+            power: Number((light.voltage * current).toFixed(2)),
             updatedAt: new Date().toISOString(),
           };
         }
-        return l;
+        return light;
       });
+
       storage.saveStreetlights(updated);
     }
 
@@ -73,29 +89,30 @@ class DemoIoTAdapter implements IoTAdapter {
     return command;
   }
 
-  subscribeTelemetry(callback: (packet: ControllerTelemetryPacket) => void): () => void {
+  subscribeTelemetry(
+    callback: (packet: ControllerTelemetryPacket) => void
+  ): () => void {
     this.listeners.push(callback);
     return () => {
-      this.listeners = this.listeners.filter(cb => cb !== callback);
+      this.listeners = this.listeners.filter((listener) => listener !== callback);
     };
   }
 
   emitTelemetry(packet: ControllerTelemetryPacket) {
-    this.listeners.forEach(cb => cb(packet));
+    this.listeners.forEach((listener) => listener(packet));
   }
 }
 
 /**
- * Real IoT Adapter for live ESP32 & MQTT broker bridge connection.
- * Strictly adheres to hardware telemetry validation and freshness timeout.
- * Zero numerical fallbacks are permitted when no physical ESP32 is transmitting.
+ * Real adapter for the currently connected ESP32.
+ * Only SL-GMC-001 / relay channel 1 is physically connected.
  */
 class RealIoTAdapter implements IoTAdapter {
   mode: 'real' = 'real';
   private apiBaseUrl: string;
-  private lastPacketTime: number = 0; // 0 = no telemetry received yet
-  private modeStartedAt: number = Date.now();
-  private freshnessTimeoutMs: number = 10000; // 10 seconds freshness window
+  private lastPacketTime = 0;
+  private modeStartedAt = Date.now();
+  private freshnessTimeoutMs = 10000;
   private listeners: ((packet: ControllerTelemetryPacket) => void)[] = [];
   private pollTimer: any = null;
 
@@ -110,63 +127,99 @@ class RealIoTAdapter implements IoTAdapter {
   }
 
   isTelemetryFresh(): boolean {
-    if (this.lastPacketTime === 0) return false;
-    return (Date.now() - this.lastPacketTime) < this.freshnessTimeoutMs;
+    return (
+      this.lastPacketTime !== 0 &&
+      Date.now() - this.lastPacketTime < this.freshnessTimeoutMs
+    );
   }
 
   getConnectionStatus(): IoTConnectionStatus {
-    // 1. Fresh telemetry actively received
-    if (this.isTelemetryFresh()) {
-      return 'CONNECTED';
-    }
+    if (this.isTelemetryFresh()) return 'CONNECTED';
 
-    // 2. Just transitioned into Real IoT Mode and waiting for first heartbeat/packet
-    if (this.lastPacketTime === 0 && (Date.now() - this.modeStartedAt) < 6000) {
+    if (
+      this.lastPacketTime === 0 &&
+      Date.now() - this.modeStartedAt < 6000
+    ) {
       return 'WAITING';
     }
 
-    // 3. Telemetry expired or physical ESP32 disconnected
     return 'OFFLINE';
   }
 
   feedRawTelemetry(raw: any) {
     if (!raw) return;
 
-    // Validate structure: must contain controller id and lights
     const controllerId = raw.controller_id || raw.controllerId;
     if (!controllerId) return;
 
     const rawLights: any[] = raw.lights || [];
     if (!Array.isArray(rawLights) || rawLights.length === 0) return;
 
-    const parsedLights: LightTelemetrySample[] = rawLights.map((l: any, idx: number) => {
-      const channel = l.relay_channel || l.relayChannel || (idx + 1);
-      const lightId = l.light_id || l.lightId || `SL-GMC-${String(channel).padStart(3, '0')}`;
-      const relayState = Boolean(l.relay_state !== undefined ? l.relay_state : l.relayState);
-      const currentA = typeof l.current_a === 'number' ? l.current_a : typeof l.currentA === 'number' ? l.currentA : 0.0;
-      const voltageV = typeof l.voltage_v === 'number' ? l.voltage_v : typeof l.voltageV === 'number' ? l.voltageV : 0.0;
-      const powerW = Number((voltageV * currentA).toFixed(2));
+    const parsedLights: LightTelemetrySample[] = rawLights.map(
+      (light: any, index: number) => {
+        const channel =
+          light.relay_channel || light.relayChannel || index + 1;
 
-      return {
-        lightId,
-        relayChannel: channel,
-        relayState,
-        currentA: Number(currentA.toFixed(3)),
-        voltageV: Number(voltageV.toFixed(2)),
-        powerW,
-        currentSource: 'measured',
-        voltageSource: 'measured',
-        powerSource: 'calculated',
-        simulatedFaultInput: Boolean(l.simulated_fault),
-      };
-    });
+        const lightId =
+          light.light_id ||
+          light.lightId ||
+          `SL-GMC-${String(channel).padStart(3, '0')}`;
+
+        const relayState = Boolean(
+          light.relay_state !== undefined
+            ? light.relay_state
+            : light.relayState
+        );
+
+        const hasCurrent =
+          typeof light.current_a === 'number' ||
+          typeof light.currentA === 'number';
+
+        const hasVoltage =
+          typeof light.voltage_v === 'number' ||
+          typeof light.voltageV === 'number';
+
+        const currentA = hasCurrent
+          ? (typeof light.current_a === 'number'
+              ? light.current_a
+              : light.currentA)
+          : 0;
+
+        const voltageV = hasVoltage
+          ? (typeof light.voltage_v === 'number'
+              ? light.voltage_v
+              : light.voltageV)
+          : 0;
+
+        const powerW = Number((voltageV * currentA).toFixed(2));
+
+        return {
+          lightId,
+          relayChannel: channel,
+          relayState,
+          currentA: Number(currentA.toFixed(3)),
+          voltageV: Number(voltageV.toFixed(2)),
+          powerW,
+          currentSource: hasCurrent ? 'measured' : 'unavailable',
+          voltageSource: hasVoltage ? 'measured' : 'unavailable',
+          powerSource:
+            hasCurrent && hasVoltage ? 'calculated' : 'unavailable',
+          simulatedFaultInput: Boolean(light.simulated_fault),
+        };
+      }
+    );
 
     const packet: ControllerTelemetryPacket = {
       controllerId,
       sequence: raw.sequence || 1,
       timestamp: new Date().toISOString(),
       status: 'ONLINE',
-      ambientLightLux: typeof raw.ambient_light === 'number' ? raw.ambient_light : typeof raw.ambientLightLux === 'number' ? raw.ambientLightLux : 0,
+      ambientLightLux:
+        typeof raw.ambient_light === 'number'
+          ? raw.ambient_light
+          : typeof raw.ambientLightLux === 'number'
+            ? raw.ambientLightLux
+            : 0,
       lights: parsedLights,
       rssi: raw.wifi_rssi || raw.rssi,
       uptimeSeconds: raw.uptime_s || raw.uptimeSeconds,
@@ -174,81 +227,115 @@ class RealIoTAdapter implements IoTAdapter {
     };
 
     this.lastPacketTime = Date.now();
-    this.listeners.forEach(cb => cb(packet));
+    this.listeners.forEach((listener) => listener(packet));
   }
 
   private initBridgeListener() {
-    // 1. Listen for browser window event bridge (useful for WebSerial, WebSocket client or external proxy)
     if (typeof window !== 'undefined') {
-      window.addEventListener('gmc_esp32_telemetry', (e: any) => {
-        if (e.detail) {
-          this.feedRawTelemetry(e.detail);
-        }
+      window.addEventListener('gmc_esp32_telemetry', (event: any) => {
+        if (event.detail) this.feedRawTelemetry(event.detail);
       });
     }
 
-    // 2. Poll HTTP endpoint if configured
     if (typeof window !== 'undefined' && !this.pollTimer) {
       this.pollTimer = setInterval(async () => {
-        const mode = storage.getAppMode();
-        if (mode !== 'real') return;
+        if (storage.getAppMode() !== 'real') return;
 
         try {
-          const res = await fetch(`${this.apiBaseUrl}/telemetry`, {
-            headers: { 'Accept': 'application/json' },
+          const response = await fetch(`${this.apiBaseUrl}/telemetry`, {
+            headers: { Accept: 'application/json' },
             signal: AbortSignal.timeout(2000),
           });
 
-          if (res.ok) {
-            const data = await res.json();
-            // Validate that actual telemetry payload exists and is fresh
-            if (data && (data.controller_id || data.controllerId) && Array.isArray(data.lights)) {
+          if (response.ok) {
+            const data = await response.json();
+
+            if (
+              data &&
+              (data.controller_id || data.controllerId) &&
+              Array.isArray(data.lights)
+            ) {
               this.feedRawTelemetry(data);
             }
           }
         } catch {
-          // Expected when no backend bridge or ESP32 is physically present
+          // No telemetry endpoint is available until firmware supports it.
         }
       }, 3000);
     }
   }
 
-  async sendCommand(cmdData: Omit<DeviceCommand, 'commandId' | 'timestamp' | 'status'>): Promise<DeviceCommand> {
-    const commandId = `CMD-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-    const now = new Date().toISOString();
+  async sendCommand(
+    cmdData: Omit<DeviceCommand, 'commandId' | 'timestamp' | 'status'>
+  ): Promise<DeviceCommand> {
+    const commandId = `CMD-${Date.now()}-${Math.random()
+      .toString(36)
+      .substring(2, 7)}`;
 
     const command: DeviceCommand = {
       ...cmdData,
       commandId,
-      timestamp: now,
+      timestamp: new Date().toISOString(),
       status: 'PENDING',
     };
 
+    // Strictly prevent other lights from operating the single physical relay.
+    if (
+      command.type !== 'SET_STATE' ||
+      command.controllerId !== 'ESP32-GMC-01' ||
+      command.lightId !== 'SL-GMC-001' ||
+      command.relayChannel !== 1 ||
+      (command.payload.state !== 'ON' && command.payload.state !== 'OFF')
+    ) {
+      command.status = 'REJECTED';
+      command.statusReason =
+        'Only SL-GMC-001 on relay channel 1 is currently connected to the ESP32.';
+      return command;
+    }
+
     try {
-      const res = await fetch(`${this.apiBaseUrl}/command`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(command),
-        signal: AbortSignal.timeout(3000),
+      const endpoint =
+        command.payload.state === 'ON' ? '/light/on' : '/light/off';
+
+      const response = await fetch(`${this.apiBaseUrl}${endpoint}`, {
+        method: 'GET',
+        headers: { Accept: 'application/json' },
+        signal: AbortSignal.timeout(4000),
       });
 
-      if (!res.ok) {
-        throw new Error(`Controller communication failed: ${res.statusText}`);
+      if (!response.ok) {
+        throw new Error(`ESP32 communication failed: HTTP ${response.status}`);
       }
 
-      const ack = await res.json();
-      return ack;
-    } catch (err: any) {
+      const acknowledgement = await response.json();
+
+      if (
+        acknowledgement.success !== true ||
+        acknowledgement.state !== command.payload.state
+      ) {
+        throw new Error('ESP32 did not confirm the requested relay state.');
+      }
+
+      command.status = 'COMPLETED';
+      command.acknowledgedAt = new Date().toISOString();
+      command.completedAt = new Date().toISOString();
+
+      return command;
+    } catch (error: any) {
       command.status = 'FAILED';
-      command.statusReason = err.message || 'Network timeout contacting ESP32 controller';
+      command.statusReason =
+        error?.message || 'Network error contacting ESP32 controller.';
       return command;
     }
   }
 
-  subscribeTelemetry(callback: (packet: ControllerTelemetryPacket) => void): () => void {
+  subscribeTelemetry(
+    callback: (packet: ControllerTelemetryPacket) => void
+  ): () => void {
     this.listeners.push(callback);
+
     return () => {
-      this.listeners = this.listeners.filter(cb => cb !== callback);
+      this.listeners = this.listeners.filter((listener) => listener !== callback);
     };
   }
 }
@@ -257,8 +344,5 @@ export const demoAdapter = new DemoIoTAdapter();
 export const realAdapter = new RealIoTAdapter();
 
 export function getActiveIoTAdapter(): IoTAdapter {
-  const mode = storage.getAppMode();
-  return mode === 'real' ? realAdapter : demoAdapter;
+  return storage.getAppMode() === 'real' ? realAdapter : demoAdapter;
 }
-
-

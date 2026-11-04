@@ -1,16 +1,40 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Streetlight, StreetlightInput, LightState } from '../types/streetlight';
+﻿import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+} from 'react';
+
+import {
+  Streetlight,
+  StreetlightInput,
+  LightState,
+} from '../types/streetlight';
+
 import { Controller } from '../types/controller';
 import { FaultRecord, FaultThresholds } from '../types/fault';
 import { MaintenanceTicket } from '../types/maintenance';
+
 import { storage } from '../services/storage';
-import { evaluateStreetlightFaults, checkControllerHealth } from '../services/faultEngine';
-import { getActiveIoTAdapter, realAdapter, demoAdapter, IoTConnectionStatus } from '../services/iotAdapter';
+
+import {
+  evaluateStreetlightFaults,
+  checkControllerHealth,
+} from '../services/faultEngine';
+
+import {
+  getActiveIoTAdapter,
+  realAdapter,
+  demoAdapter,
+  IoTConnectionStatus,
+} from '../services/iotAdapter';
+
 import { useAuth } from './AuthContext';
 import { INITIAL_DEMO_STREETLIGHTS } from '../services/demoSimulator';
 
 interface CCMSContextType {
-  // State
   streetlights: Streetlight[];
   controllers: Controller[];
   faults: FaultRecord[];
@@ -20,25 +44,49 @@ interface CCMSContextType {
   systemStatus: IoTConnectionStatus;
   lastTelemetryTime: string;
   ambientLightLux: number;
-  
-  // Actions
-  toggleStreetlight: (id: string, desiredState?: LightState) => Promise<boolean>;
-  setStreetlightMode: (id: string, mode: 'auto' | 'manual' | 'scheduled') => void;
+
+  toggleStreetlight: (
+    id: string,
+    desiredState?: LightState
+  ) => Promise<boolean>;
+
+  setStreetlightMode: (
+    id: string,
+    mode: 'auto' | 'manual' | 'scheduled'
+  ) => void;
+
   bulkControl: (state: LightState) => Promise<void>;
   addStreetlight: (input: StreetlightInput) => boolean;
   updateStreetlight: (id: string, updates: Partial<Streetlight>) => void;
   deleteStreetlight: (id: string) => boolean;
-  
-  // Faults & Maintenance
+
   acknowledgeFault: (faultId: string) => void;
   resolveFault: (faultId: string, notes?: string) => void;
-  createMaintenanceTicket: (ticket: Omit<MaintenanceTicket, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void;
-  updateMaintenanceTicket: (id: string, updates: Partial<MaintenanceTicket>) => void;
-  
-  // Configuration & Simulation
+
+  createMaintenanceTicket: (
+    ticket: Omit<
+      MaintenanceTicket,
+      'id' | 'createdAt' | 'updatedAt' | 'createdBy'
+    >
+  ) => void;
+
+  updateMaintenanceTicket: (
+    id: string,
+    updates: Partial<MaintenanceTicket>
+  ) => void;
+
   updateThresholds: (thresholds: FaultThresholds) => void;
   setAppMode: (mode: 'demo' | 'real') => void;
-  simulateFaultCondition: (lightId: string, faultType: 'OPEN_CIRCUIT' | 'OVERCURRENT' | 'DAYTIME_ON' | 'RESTORE') => void;
+
+  simulateFaultCondition: (
+    lightId: string,
+    faultType:
+      | 'OPEN_CIRCUIT'
+      | 'OVERCURRENT'
+      | 'DAYTIME_ON'
+      | 'RESTORE'
+  ) => void;
+
   simulateControllerOffline: (offline: boolean) => void;
   setSimulatedAmbientLight: (lux: number) => void;
   resetAllData: () => void;
@@ -46,44 +94,76 @@ interface CCMSContextType {
 
 const CCMSContext = createContext<CCMSContextType | undefined>(undefined);
 
-export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const CCMSProvider: React.FC<{
+  children: React.ReactNode;
+}> = ({ children }) => {
   const { user, isAdmin } = useAuth();
-  
-  const [appMode, setAppModeState] = useState<'demo' | 'real'>(() => storage.getAppMode());
+
+  const [appMode, setAppModeState] = useState<'demo' | 'real'>(() =>
+    storage.getAppMode()
+  );
+
   const [streetlights, setStreetlights] = useState<Streetlight[]>(() => {
     const currentMode = storage.getAppMode();
     const stored = storage.getStreetlights();
+
     if (currentMode === 'real') {
-      // In Real IoT Mode, if no active telemetry is connected, initialize with zeros
-      return stored.map(l => ({
-        ...l,
+      return stored.map(light => ({
+        ...light,
         state: 'OFF' as LightState,
-        voltage: 0.0,
-        current: 0.0,
-        power: 0.0,
-        energyKWh: 0.0,
+        voltage: 0,
+        current: 0,
+        power: 0,
+        energyKWh: 0,
         ambientLight: 0,
         healthStatus: 'OFFLINE',
       }));
     }
+
     return stored;
   });
-  const [controllers, setControllers] = useState<Controller[]>(() => storage.getControllers());
-  const [faults, setFaults] = useState<FaultRecord[]>(() => storage.getFaults());
-  const [tickets, setTickets] = useState<MaintenanceTicket[]>(() => storage.getTickets());
-  const [thresholds, setThresholds] = useState<FaultThresholds>(() => storage.getThresholds());
-  const [ambientLightLux, setAmbientLightLux] = useState<number>(() => storage.getAppMode() === 'real' ? 0 : 85);
-  const [lastTelemetryTime, setLastTelemetryTime] = useState<string>(new Date().toISOString());
-  const [simulatedSwitchActive, setSimulatedSwitchActive] = useState<Record<string, boolean>>({});
-  const [realSystemStatus, setRealSystemStatus] = useState<IoTConnectionStatus>('OFFLINE');
 
-  // Keep a reference to latest streetlights for async callbacks
+  const [controllers, setControllers] = useState<Controller[]>(() =>
+    storage.getControllers()
+  );
+
+  const [faults, setFaults] = useState<FaultRecord[]>(() =>
+    storage.getFaults()
+  );
+
+  const [tickets, setTickets] = useState<MaintenanceTicket[]>(() =>
+    storage.getTickets()
+  );
+
+  const [thresholds, setThresholds] = useState<FaultThresholds>(() =>
+    storage.getThresholds()
+  );
+
+  const [ambientLightLux, setAmbientLightLux] = useState<number>(() =>
+    storage.getAppMode() === 'real' ? 0 : 85
+  );
+
+  const [lastTelemetryTime, setLastTelemetryTime] = useState<string>(
+    new Date().toISOString()
+  );
+
+  const [simulatedSwitchActive, setSimulatedSwitchActive] =
+    useState<Record<string, boolean>>({});
+
+  const [realSystemStatus, setRealSystemStatus] =
+    useState<IoTConnectionStatus>('OFFLINE');
+
+  // Keep the latest streetlight data available to telemetry callbacks.
   const streetlightsRef = useRef(streetlights);
+
   useEffect(() => {
     streetlightsRef.current = streetlights;
   }, [streetlights]);
 
-  // Sync to storage (only in demo mode, avoid writing zeros over demo config)
+  // Require consecutive real telemetry readings before raising a fault.
+  const realFaultSampleCounts = useRef<Record<string, number>>({});
+
+  // Persist existing application data.
   useEffect(() => {
     if (appMode === 'demo') {
       storage.saveStreetlights(streetlights);
@@ -106,38 +186,50 @@ export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
     storage.saveThresholds(thresholds);
   }, [thresholds]);
 
-  // =========================================================================
-  // MODE 1: DEMO SIMULATION LOOP (Runs ONLY when appMode === 'demo')
-  // =========================================================================
+  // ============================================================
+  // DEMO MODE: SIMULATION AND FAULT DETECTION
+  // ============================================================
+
   useEffect(() => {
-    if (appMode !== 'demo') {
-      return;
-    }
+    if (appMode !== 'demo') return;
 
     const timer = setInterval(() => {
       const now = new Date().toISOString();
+
       setLastTelemetryTime(now);
 
-      // Check primary controller
       const primaryController = controllers[0];
+
       if (primaryController) {
-        const { isOffline, fault: offlineFault } = checkControllerHealth(primaryController, thresholds);
+        const {
+          isOffline,
+          fault: offlineFault,
+        } = checkControllerHealth(primaryController, thresholds);
+
         if (isOffline && offlineFault) {
           setFaults(prev => {
-            if (prev.some(f => f.category === 'CONTROLLER_OFFLINE' && f.status === 'UNACKNOWLEDGED')) {
-              return prev;
-            }
-            return [offlineFault, ...prev];
+            const alreadyExists = prev.some(
+              fault =>
+                fault.category === 'CONTROLLER_OFFLINE' &&
+                fault.status !== 'RESOLVED'
+            );
+
+            return alreadyExists
+              ? prev
+              : [offlineFault, ...prev];
           });
         }
       }
 
-      // Update telemetry for each streetlight in DEMO MODE
-      setStreetlights(prevLights => {
-        return prevLights.map(light => {
+      setStreetlights(prevLights =>
+        prevLights.map(light => {
           let calculatedState = light.state;
+
           if (light.controlMode === 'auto') {
-            calculatedState = ambientLightLux < thresholds.daylightThresholdLux ? 'ON' : 'OFF';
+            calculatedState =
+              ambientLightLux < thresholds.daylightThresholdLux
+                ? 'ON'
+                : 'OFF';
           }
 
           let voltage = light.voltage;
@@ -145,16 +237,25 @@ export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           if (calculatedState === 'ON') {
             if (!simulatedSwitchActive[light.id]) {
-              voltage = 5.0 + (Math.sin(Date.now() / 10000) * 0.05);
-              current = 0.14 + (Math.cos(Date.now() / 8000) * 0.008);
+              voltage =
+                5.0 + Math.sin(Date.now() / 10000) * 0.05;
+
+              current =
+                0.14 + Math.cos(Date.now() / 8000) * 0.008;
             }
           } else {
-            voltage = 5.08 + (Math.random() * 0.03);
-            current = 0.000;
+            voltage = 5.08 + Math.random() * 0.03;
+            current = 0;
           }
 
           const power = Number((voltage * current).toFixed(2));
-          const energyKWh = Number((light.energyKWh + (power * (1 / 3600)) / 1000).toFixed(6));
+
+          const energyKWh = Number(
+            (
+              light.energyKWh +
+              (power * (1 / 3600)) / 1000
+            ).toFixed(6)
+          );
 
           const updatedLight: Streetlight = {
             ...light,
@@ -172,75 +273,210 @@ export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
             streetlight: updatedLight,
             ambientLightLux,
             thresholds,
-            simulatedFaultSwitch: simulatedSwitchActive[light.id] || false,
+            simulatedFaultSwitch:
+              simulatedSwitchActive[light.id] || false,
           });
 
           if (newFaults.length > 0) {
-            updatedLight.healthStatus = newFaults.some(f => f.severity === 'CRITICAL') ? 'CRITICAL' : 'WARNING';
+            updatedLight.healthStatus = newFaults.some(
+              fault => fault.severity === 'CRITICAL'
+            )
+              ? 'CRITICAL'
+              : 'WARNING';
+
             updatedLight.lastFault = newFaults[0].description;
             updatedLight.lastFaultType = newFaults[0].category;
             updatedLight.lastFaultTime = newFaults[0].timestamp;
 
             setFaults(currentFaults => {
-              const toAdd = newFaults.filter(nf =>
+              const toAdd = newFaults.filter(newFault =>
                 !currentFaults.some(
-                  cf => cf.lightId === nf.lightId && cf.category === nf.category && cf.status === 'UNACKNOWLEDGED'
+                  existing =>
+                    existing.lightId === newFault.lightId &&
+                    existing.category === newFault.category &&
+                    existing.status !== 'RESOLVED'
                 )
               );
+
               return [...toAdd, ...currentFaults];
             });
           } else {
-            const hasExistingUnack = faults.some(f => f.lightId === updatedLight.id && f.status === 'UNACKNOWLEDGED');
-            if (!hasExistingUnack) {
-              updatedLight.healthStatus = 'HEALTHY';
-            }
+            updatedLight.healthStatus = 'HEALTHY';
           }
 
           return updatedLight;
-        });
-      });
+        })
+      );
     }, 2000);
 
     return () => clearInterval(timer);
-  }, [appMode, ambientLightLux, thresholds, simulatedSwitchActive, controllers, faults]);
+  }, [
+    appMode,
+    ambientLightLux,
+    thresholds,
+    simulatedSwitchActive,
+    controllers,
+  ]);
 
-  // =========================================================================
-  // MODE 2: REAL IoT MODE – TELEMETRY LISTENER & FRESHNESS WATCHDOG
-  // =========================================================================
+  // ============================================================
+  // REAL IoT MODE: ESP32 TELEMETRY AND AUTOMATIC FAULT DETECTION
+  // ============================================================
+
   useEffect(() => {
-    if (appMode !== 'real') {
-      return;
-    }
+    if (appMode !== 'real') return;
 
-    // 1. Subscribe to incoming telemetry packets from Real IoT Adapter
+    // Subscribe to ESP32 telemetry.
     const unsubscribe = realAdapter.subscribeTelemetry(packet => {
       const now = new Date().toISOString();
+
       setLastTelemetryTime(now);
       setRealSystemStatus('CONNECTED');
       setAmbientLightLux(packet.ambientLightLux);
 
-      // Update controllers
+      // Update controller heartbeat.
       setControllers(prev =>
-        prev.map(c =>
-          c.id === packet.controllerId
-            ? { ...c, status: 'ONLINE', lastHeartbeat: now, rssi: packet.rssi }
-            : c
+        prev.map(controller =>
+          controller.id === packet.controllerId
+            ? {
+                ...controller,
+                status: 'ONLINE',
+                lastHeartbeat: now,
+                rssi: packet.rssi,
+              }
+            : controller
         )
       );
 
-      // Map incoming physical telemetry samples to registered streetlights
-      setStreetlights(prevLights => {
-        return prevLights.map(light => {
+      const detectedFaults: FaultRecord[] = [];
+      const confirmedCategories: Record<string, string[]> = {};
+
+      // Evaluate only physical lights that have an actual ESP32 sample.
+      const registeredLights = streetlightsRef.current;
+
+      packet.lights.forEach(sample => {
+        const light = registeredLights.find(
+          registered =>
+            registered.hardwareStatus === 'physical' &&
+            (
+              registered.id === sample.lightId ||
+              registered.relayChannel === sample.relayChannel
+            )
+        );
+
+        if (!light || !light.monitoringEnabled) return;
+
+        const updatedLight: Streetlight = {
+          ...light,
+          state: sample.relayState ? 'ON' : 'OFF',
+          voltage: sample.voltageV,
+          current: sample.currentA,
+          power: sample.powerW,
+          ambientLight: packet.ambientLightLux,
+          lastCommunication: now,
+          updatedAt: now,
+        };
+
+        // Real mode has no confirmed LDR measurement yet.
+        // Do not generate daytime-light alerts from a default zero value.
+        const candidates = evaluateStreetlightFaults({
+          streetlight: updatedLight,
+          ambientLightLux: packet.ambientLightLux,
+          thresholds,
+          simulatedFaultSwitch: sample.simulatedFaultInput || false,
+          currentSource: sample.currentSource,
+          voltageSource: sample.voltageSource,
+          ambientLightSource: 'unavailable',
+        });
+
+        const candidateKeys = new Set<string>();
+
+        candidates.forEach(candidate => {
+          const key = `${light.id}::${candidate.category}`;
+
+          candidateKeys.add(key);
+
+          const count =
+            (realFaultSampleCounts.current[key] || 0) + 1;
+
+          realFaultSampleCounts.current[key] = count;
+
+          // Two consecutive telemetry packets are required.
+          if (count >= 2) {
+            detectedFaults.push(candidate);
+
+            if (!confirmedCategories[light.id]) {
+              confirmedCategories[light.id] = [];
+            }
+
+            confirmedCategories[light.id].push(
+              candidate.category
+            );
+          }
+        });
+
+        // Reset counters for conditions that are no longer detected.
+        Object.keys(realFaultSampleCounts.current).forEach(key => {
+          if (
+            key.startsWith(`${light.id}::`) &&
+            !candidateKeys.has(key)
+          ) {
+            realFaultSampleCounts.current[key] = 0;
+          }
+        });
+      });
+
+      // Store new faults without duplicating existing active records.
+      if (detectedFaults.length > 0) {
+        setFaults(prev => {
+          const newRecords = detectedFaults.filter(newFault => {
+            return !prev.some(
+              existing =>
+                existing.lightId === newFault.lightId &&
+                existing.category === newFault.category &&
+                existing.status !== 'RESOLVED'
+            );
+          });
+
+          return newRecords.length > 0
+            ? [...newRecords, ...prev]
+            : prev;
+        });
+      }
+
+      // Update dashboard readings using the incoming ESP32 samples.
+      setStreetlights(prevLights =>
+        prevLights.map(light => {
           const sample = packet.lights.find(
-            s => s.lightId === light.id || s.relayChannel === light.relayChannel
+            item =>
+              item.lightId === light.id ||
+              item.relayChannel === light.relayChannel
           );
 
-          if (sample && light.hardwareStatus === 'physical') {
+          if (
+            sample &&
+            light.hardwareStatus === 'physical'
+          ) {
             const power = sample.powerW;
-            const energyDelta = (power * (2 / 3600)) / 1000;
-            const energyKWh = Number((light.energyKWh + energyDelta).toFixed(6));
 
-            const updatedLight: Streetlight = {
+            const energyDelta =
+              (power * (2 / 3600)) / 1000;
+
+            const energyKWh = Number(
+              (light.energyKWh + energyDelta).toFixed(6)
+            );
+
+            const confirmedFaults =
+              confirmedCategories[light.id] || [];
+
+            const hasCriticalFault = confirmedFaults.some(
+              category =>
+                category === 'OPEN_CIRCUIT' ||
+                category === 'SHORT_CIRCUIT_OR_OVERCURRENT'
+            );
+
+            const hasWarningFault = confirmedFaults.length > 0;
+
+            return {
               ...light,
               state: sample.relayState ? 'ON' : 'OFF',
               voltage: sample.voltageV,
@@ -250,56 +486,65 @@ export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ambientLight: packet.ambientLightLux,
               lastCommunication: now,
               updatedAt: now,
-              healthStatus: sample.simulatedFaultInput ? 'CRITICAL' : 'HEALTHY',
+              healthStatus: hasCriticalFault
+                ? 'CRITICAL'
+                : hasWarningFault
+                  ? 'WARNING'
+                  : sample.simulatedFaultInput
+                    ? 'CRITICAL'
+                    : 'HEALTHY',
             };
-
-            return updatedLight;
           }
 
-          // Virtual streetlights without physical channel have zero readings in Real IoT Mode
+          // Do not show simulated readings for unconnected lights
+          // in Real IoT Mode.
           return {
             ...light,
-            voltage: 0.0,
-            current: 0.0,
-            power: 0.0,
-            energyKWh: 0.0,
+            voltage: 0,
+            current: 0,
+            power: 0,
+            energyKWh: 0,
             ambientLight: packet.ambientLightLux,
           };
-        });
-      });
+        })
+      );
     });
 
-    // 2. Watchdog timer: checks every 1 second for telemetry freshness
+    // Watchdog: check telemetry freshness every second.
     const watchdogTimer = setInterval(() => {
       const isFresh = realAdapter.isTelemetryFresh();
       const currentStatus = realAdapter.getConnectionStatus();
+
       setRealSystemStatus(currentStatus);
 
-      // IF NO FRESH TELEMETRY (<10s window) IS BEING RECEIVED FROM ESP32:
-      // Zero out all numerical readings, show zero power, zero voltage, zero current, zero energy
       if (!isFresh) {
         setAmbientLightLux(0);
+
         setControllers(prev =>
-          prev.map(c => ({
-            ...c,
+          prev.map(controller => ({
+            ...controller,
             status: 'OFFLINE',
           }))
         );
 
         setStreetlights(prev => {
-          // If already zeroed, avoid unneeded state updates
-          const isAlreadyZeroed = prev.every(
-            l => l.voltage === 0 && l.current === 0 && l.power === 0 && l.energyKWh === 0
+          const alreadyZeroed = prev.every(
+            light =>
+              light.voltage === 0 &&
+              light.current === 0 &&
+              light.power === 0 &&
+              light.energyKWh === 0
           );
-          if (isAlreadyZeroed) return prev;
+
+          if (alreadyZeroed) return prev;
 
           return prev.map(light => ({
             ...light,
             state: 'OFF' as LightState,
-            voltage: 0.0,
-            current: 0.0,
-            power: 0.0,
-            energyKWh: 0.0,
+            voltage: 0,
+            current: 0,
+            power: 0,
+            energyKWh: 0,
             ambientLight: 0,
             healthStatus: 'OFFLINE',
           }));
@@ -311,313 +556,485 @@ export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
       unsubscribe();
       clearInterval(watchdogTimer);
     };
-  }, [appMode]);
+  }, [appMode, thresholds]);
 
-  // =========================================================================
-  // APP MODE SWITCHER (DEMO vs REAL IoT)
-  // =========================================================================
+  // ============================================================
+  // APP MODE SWITCHER
+  // ============================================================
+
   const setAppMode = useCallback((mode: 'demo' | 'real') => {
     setAppModeState(mode);
     storage.setAppMode(mode);
 
+    // Reset debounce history when changing modes.
+    realFaultSampleCounts.current = {};
+
     if (mode === 'real') {
-      // Transitioning to REAL IoT Mode:
-      // Zero out all sensor readings immediately and reset real adapter
       realAdapter.resetRealMode();
+
       setRealSystemStatus('WAITING');
       setAmbientLightLux(0);
 
       setControllers(prev =>
-        prev.map(c => ({
-          ...c,
+        prev.map(controller => ({
+          ...controller,
           status: 'OFFLINE',
         }))
       );
 
       setStreetlights(prev =>
-        prev.map(l => ({
-          ...l,
+        prev.map(light => ({
+          ...light,
           state: 'OFF' as LightState,
-          voltage: 0.0,
-          current: 0.0,
-          power: 0.0,
-          energyKWh: 0.0,
+          voltage: 0,
+          current: 0,
+          power: 0,
+          energyKWh: 0,
           ambientLight: 0,
           healthStatus: 'OFFLINE',
         }))
       );
     } else {
-      // Transitioning back to DEMO MODE:
-      // Restore simulated demonstration values
       const storedLights = storage.getStreetlights();
-      setStreetlights(storedLights.length > 0 ? storedLights : INITIAL_DEMO_STREETLIGHTS);
+
+      setStreetlights(
+        storedLights.length > 0
+          ? storedLights
+          : INITIAL_DEMO_STREETLIGHTS
+      );
+
       setControllers(storage.getControllers());
       setAmbientLightLux(85);
       setRealSystemStatus('OFFLINE');
     }
   }, []);
 
-  // Compute overall systemStatus
-  const systemStatus: IoTConnectionStatus = appMode === 'demo'
-    ? 'DEMO_MODE'
-    : realSystemStatus;
+  const systemStatus: IoTConnectionStatus =
+    appMode === 'demo'
+      ? 'DEMO_MODE'
+      : realSystemStatus;
 
-  // Command handling
-  const toggleStreetlight = useCallback(async (id: string, desiredState?: LightState): Promise<boolean> => {
-    const light = streetlights.find(l => l.id === id);
-    if (!light) return false;
+  // ============================================================
+  // STREETLIGHT CONTROL
+  // ============================================================
 
-    const targetState: LightState = desiredState || (light.state === 'ON' ? 'OFF' : 'ON');
-    const adapter = getActiveIoTAdapter();
+  const toggleStreetlight = useCallback(
+    async (
+      id: string,
+      desiredState?: LightState
+    ): Promise<boolean> => {
+      const light = streetlights.find(item => item.id === id);
 
-    const cmd = await adapter.sendCommand({
-      controllerId: light.controllerId,
-      lightId: light.id,
-      relayChannel: light.relayChannel || undefined,
-      type: 'SET_STATE',
-      payload: { state: targetState },
-      operatorId: user?.email || 'operator',
-    });
+      if (!light) return false;
 
-    if (cmd.status === 'COMPLETED' || cmd.status === 'ACKNOWLEDGED') {
+      const targetState: LightState =
+        desiredState ||
+        (light.state === 'ON' ? 'OFF' : 'ON');
+
+      const adapter = getActiveIoTAdapter();
+
+      const command = await adapter.sendCommand({
+        controllerId: light.controllerId,
+        lightId: light.id,
+        relayChannel: light.relayChannel || undefined,
+        type: 'SET_STATE',
+        payload: { state: targetState },
+        operatorId: user?.email || 'operator',
+      });
+
+      if (
+        command.status === 'COMPLETED' ||
+        command.status === 'ACKNOWLEDGED'
+      ) {
+        setStreetlights(prev =>
+          prev.map(item =>
+            item.id === id
+              ? {
+                  ...item,
+                  state: targetState,
+                  controlMode: 'manual',
+                  current:
+                    targetState === 'ON'
+                      ? appMode === 'real'
+                        ? item.current
+                        : 0.14
+                      : 0,
+                  power:
+                    targetState === 'ON'
+                      ? appMode === 'real'
+                        ? item.power
+                        : Number(
+                            (item.voltage * 0.14).toFixed(2)
+                          )
+                      : 0,
+                  updatedAt: new Date().toISOString(),
+                }
+              : item
+          )
+        );
+
+        return true;
+      }
+
+      return false;
+    },
+    [streetlights, user, appMode]
+  );
+
+  const setStreetlightMode = useCallback(
+    (
+      id: string,
+      mode: 'auto' | 'manual' | 'scheduled'
+    ) => {
       setStreetlights(prev =>
-        prev.map(l =>
-          l.id === id
+        prev.map(light =>
+          light.id === id
             ? {
-                ...l,
-                state: targetState,
-                controlMode: 'manual',
-                current: targetState === 'ON' ? (appMode === 'real' ? l.current : 0.14) : 0.0,
-                power: targetState === 'ON' ? (appMode === 'real' ? l.power : Number((l.voltage * 0.14).toFixed(2))) : 0.0,
+                ...light,
+                controlMode: mode,
                 updatedAt: new Date().toISOString(),
               }
-            : l
+            : light
         )
       );
+    },
+    []
+  );
+
+  const bulkControl = useCallback(
+    async (state: LightState) => {
+      for (const light of streetlights) {
+        await toggleStreetlight(light.id, state);
+      }
+    },
+    [streetlights, toggleStreetlight]
+  );
+
+  // ============================================================
+  // ADMIN: STREETLIGHT MANAGEMENT
+  // ============================================================
+
+  const addStreetlight = useCallback(
+    (input: StreetlightInput): boolean => {
+      if (!isAdmin) {
+        console.warn(
+          'Unauthorized: Only administrators can add streetlights.'
+        );
+        return false;
+      }
+
+      const count = streetlights.length + 1;
+      const newId = `SL-GMC-${String(count).padStart(3, '0')}`;
+      const now = new Date().toISOString();
+
+      const newLight: Streetlight = {
+        ...input,
+        id: newId,
+        state: 'OFF',
+        healthStatus: 'HEALTHY',
+        voltage: appMode === 'real' ? 0 : 5,
+        current: 0,
+        power: 0,
+        energyKWh: 0,
+        ambientLight: ambientLightLux,
+        lastCommunication: now,
+        monitoringEnabled: true,
+        createdAt: now,
+        updatedAt: now,
+        isSimulated: appMode === 'demo',
+      };
+
+      setStreetlights(prev => [...prev, newLight]);
+
       return true;
-    }
-    return false;
-  }, [streetlights, user, appMode]);
+    },
+    [streetlights, ambientLightLux, appMode, isAdmin]
+  );
 
-  const setStreetlightMode = useCallback((id: string, mode: 'auto' | 'manual' | 'scheduled') => {
-    setStreetlights(prev =>
-      prev.map(l => (l.id === id ? { ...l, controlMode: mode, updatedAt: new Date().toISOString() } : l))
-    );
-  }, []);
+  const updateStreetlight = useCallback(
+    (id: string, updates: Partial<Streetlight>) => {
+      if (!isAdmin) {
+        console.warn(
+          'Unauthorized: Only administrators can modify streetlight configurations.'
+        );
+        return;
+      }
 
-  const bulkControl = useCallback(async (state: LightState) => {
-    for (const light of streetlights) {
-      await toggleStreetlight(light.id, state);
-    }
-  }, [streetlights, toggleStreetlight]);
+      setStreetlights(prev =>
+        prev.map(light =>
+          light.id === id
+            ? {
+                ...light,
+                ...updates,
+                updatedAt: new Date().toISOString(),
+              }
+            : light
+        )
+      );
+    },
+    [isAdmin]
+  );
 
-  // Protected Admin Add Streetlight
-  const addStreetlight = useCallback((input: StreetlightInput): boolean => {
-    if (!isAdmin) {
-      console.warn('Unauthorized: Only administrators can add streetlights.');
-      return false;
-    }
+  const deleteStreetlight = useCallback(
+    (id: string): boolean => {
+      if (!isAdmin) {
+        console.warn(
+          'Unauthorized: Only administrators can remove streetlights.'
+        );
+        return false;
+      }
 
-    const count = streetlights.length + 1;
-    const newId = `SL-GMC-${String(count).padStart(3, '0')}`;
-    const now = new Date().toISOString();
+      setStreetlights(prev =>
+        prev.filter(light => light.id !== id)
+      );
 
-    const newLight: Streetlight = {
-      ...input,
-      id: newId,
-      state: 'OFF',
-      healthStatus: 'HEALTHY',
-      voltage: appMode === 'real' ? 0.0 : 5.0,
-      current: 0.0,
-      power: 0.0,
-      energyKWh: 0.0,
-      ambientLight: ambientLightLux,
-      lastCommunication: now,
-      monitoringEnabled: true,
-      createdAt: now,
-      updatedAt: now,
-      isSimulated: appMode === 'demo',
-    };
+      return true;
+    },
+    [isAdmin]
+  );
 
-    setStreetlights(prev => [...prev, newLight]);
-    return true;
-  }, [streetlights, ambientLightLux, appMode, isAdmin]);
+  // ============================================================
+  // FAULT ACKNOWLEDGEMENT AND RESOLUTION
+  // ============================================================
 
-  // Protected Admin Update Streetlight
-  const updateStreetlight = useCallback((id: string, updates: Partial<Streetlight>) => {
-    if (!isAdmin) {
-      console.warn('Unauthorized: Only administrators can modify streetlight configurations.');
-      return;
-    }
+  const acknowledgeFault = useCallback(
+    (faultId: string) => {
+      setFaults(prev =>
+        prev.map(fault =>
+          fault.id === faultId
+            ? {
+                ...fault,
+                status: 'ACKNOWLEDGED',
+                acknowledgedBy: user?.fullName || 'Operator',
+                acknowledgedAt: new Date().toISOString(),
+              }
+            : fault
+        )
+      );
+    },
+    [user]
+  );
 
-    setStreetlights(prev =>
-      prev.map(l => (l.id === id ? { ...l, ...updates, updatedAt: new Date().toISOString() } : l))
-    );
-  }, [isAdmin]);
+  const resolveFault = useCallback(
+    (faultId: string, notes?: string) => {
+      setFaults(prev =>
+        prev.map(fault =>
+          fault.id === faultId
+            ? {
+                ...fault,
+                status: 'RESOLVED',
+                resolvedBy: user?.fullName || 'Operator',
+                resolvedAt: new Date().toISOString(),
+                notes: notes || fault.notes,
+              }
+            : fault
+        )
+      );
+    },
+    [user]
+  );
 
-  // Protected Admin Delete Streetlight
-  const deleteStreetlight = useCallback((id: string): boolean => {
-    if (!isAdmin) {
-      console.warn('Unauthorized: Only administrators can remove streetlights.');
-      return false;
-    }
+  // ============================================================
+  // MAINTENANCE TICKETS
+  // ============================================================
 
-    setStreetlights(prev => prev.filter(l => l.id !== id));
-    return true;
-  }, [isAdmin]);
+  const createMaintenanceTicket = useCallback(
+    (
+      ticketData: Omit<
+        MaintenanceTicket,
+        'id' | 'createdAt' | 'updatedAt' | 'createdBy'
+      >
+    ) => {
+      const now = new Date().toISOString();
 
-  const acknowledgeFault = useCallback((faultId: string) => {
-    setFaults(prev =>
-      prev.map(f =>
-        f.id === faultId
-          ? {
-              ...f,
-              status: 'ACKNOWLEDGED',
-              acknowledgedBy: user?.fullName || 'Operator',
-              acknowledgedAt: new Date().toISOString(),
-            }
-          : f
-      )
-    );
-  }, [user]);
+      const newTicket: MaintenanceTicket = {
+        ...ticketData,
+        id: `TCK-${Date.now().toString().slice(-6)}`,
+        createdBy: user?.fullName || 'Operator',
+        createdAt: now,
+        updatedAt: now,
+      };
 
-  const resolveFault = useCallback((faultId: string, notes?: string) => {
-    setFaults(prev =>
-      prev.map(f =>
-        f.id === faultId
-          ? {
-              ...f,
-              status: 'RESOLVED',
-              resolvedBy: user?.fullName || 'Operator',
-              resolvedAt: new Date().toISOString(),
-              notes: notes || f.notes,
-            }
-          : f
-      )
-    );
-  }, [user]);
+      setTickets(prev => [newTicket, ...prev]);
+    },
+    [user]
+  );
 
-  const createMaintenanceTicket = useCallback((ticketData: Omit<MaintenanceTicket, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => {
-    const newTicket: MaintenanceTicket = {
-      ...ticketData,
-      id: `TCK-${Date.now().toString().slice(-6)}`,
-      createdBy: user?.fullName || 'Operator',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    setTickets(prev => [newTicket, ...prev]);
-  }, [user]);
+  const updateMaintenanceTicket = useCallback(
+    (id: string, updates: Partial<MaintenanceTicket>) => {
+      setTickets(prev =>
+        prev.map(ticket =>
+          ticket.id === id
+            ? {
+                ...ticket,
+                ...updates,
+                updatedAt: new Date().toISOString(),
+              }
+            : ticket
+        )
+      );
+    },
+    []
+  );
 
-  const updateMaintenanceTicket = useCallback((id: string, updates: Partial<MaintenanceTicket>) => {
-    setTickets(prev =>
-      prev.map(t => (t.id === id ? { ...t, ...updates, updatedAt: new Date().toISOString() } : t))
-    );
-  }, []);
+  // ============================================================
+  // ADMIN: THRESHOLD CONFIGURATION
+  // ============================================================
 
-  // Protected Admin Update Thresholds
-  const updateThresholds = useCallback((newThresholds: FaultThresholds) => {
-    if (!isAdmin) {
-      console.warn('Unauthorized: Only administrators can tune safety thresholds.');
-      return;
-    }
-    setThresholds(newThresholds);
-  }, [isAdmin]);
+  const updateThresholds = useCallback(
+    (newThresholds: FaultThresholds) => {
+      if (!isAdmin) {
+        console.warn(
+          'Unauthorized: Only administrators can tune safety thresholds.'
+        );
+        return;
+      }
 
-  // Demo Fault Simulation methods
-  const simulateFaultCondition = useCallback((
-    lightId: string,
-    faultType: 'OPEN_CIRCUIT' | 'OVERCURRENT' | 'DAYTIME_ON' | 'RESTORE'
-  ) => {
-    if (appMode !== 'demo') return;
+      setThresholds(newThresholds);
+    },
+    [isAdmin]
+  );
 
-    setStreetlights(prev =>
-      prev.map(l => {
-        if (l.id !== lightId) return l;
+  // ============================================================
+  // DEMO FAULT SIMULATION
+  // ============================================================
 
-        if (faultType === 'RESTORE') {
-          setSimulatedSwitchActive(s => ({ ...s, [lightId]: false }));
-          return {
-            ...l,
-            state: 'ON',
-            voltage: 5.05,
-            current: 0.14,
-            power: 0.71,
-            healthStatus: 'HEALTHY',
-            lastFault: undefined,
-          };
-        }
+  const simulateFaultCondition = useCallback(
+    (
+      lightId: string,
+      faultType:
+        | 'OPEN_CIRCUIT'
+        | 'OVERCURRENT'
+        | 'DAYTIME_ON'
+        | 'RESTORE'
+    ) => {
+      if (appMode !== 'demo') return;
 
-        if (faultType === 'OPEN_CIRCUIT') {
-          setSimulatedSwitchActive(s => ({ ...s, [lightId]: true }));
-          return {
-            ...l,
-            state: 'ON',
-            voltage: 5.08,
-            current: 0.002,
-            power: 0.01,
-            healthStatus: 'CRITICAL',
-          };
-        }
+      setStreetlights(prev =>
+        prev.map(light => {
+          if (light.id !== lightId) return light;
 
-        if (faultType === 'OVERCURRENT') {
-          setSimulatedSwitchActive(s => ({ ...s, [lightId]: true }));
-          return {
-            ...l,
-            state: 'ON',
-            voltage: 4.88,
-            current: 0.58,
-            power: 2.83,
-            healthStatus: 'CRITICAL',
-          };
-        }
+          if (faultType === 'RESTORE') {
+            setSimulatedSwitchActive(current => ({
+              ...current,
+              [lightId]: false,
+            }));
 
-        if (faultType === 'DAYTIME_ON') {
-          setAmbientLightLux(650);
-          return {
-            ...l,
-            state: 'ON',
-            controlMode: 'manual',
-            healthStatus: 'WARNING',
-          };
-        }
+            return {
+              ...light,
+              state: 'ON',
+              voltage: 5.05,
+              current: 0.14,
+              power: 0.71,
+              healthStatus: 'HEALTHY',
+              lastFault: undefined,
+            };
+          }
 
-        return l;
-      })
-    );
-  }, [appMode]);
+          if (faultType === 'OPEN_CIRCUIT') {
+            setSimulatedSwitchActive(current => ({
+              ...current,
+              [lightId]: true,
+            }));
 
-  // Protected Admin Controller Simulation
-  const simulateControllerOffline = useCallback((offline: boolean) => {
-    if (!isAdmin) return;
-    setControllers(prev =>
-      prev.map(c => ({
-        ...c,
-        status: offline ? 'OFFLINE' : 'ONLINE',
-        lastHeartbeat: offline
-          ? new Date(Date.now() - 3600000).toISOString()
-          : new Date().toISOString(),
-      }))
-    );
-  }, [isAdmin]);
+            return {
+              ...light,
+              state: 'ON',
+              voltage: 5.08,
+              current: 0.002,
+              power: 0.01,
+              healthStatus: 'CRITICAL',
+            };
+          }
 
-  const setSimulatedAmbientLight = useCallback((lux: number) => {
-    if (appMode !== 'demo') return;
-    setAmbientLightLux(lux);
-  }, [appMode]);
+          if (faultType === 'OVERCURRENT') {
+            setSimulatedSwitchActive(current => ({
+              ...current,
+              [lightId]: true,
+            }));
 
-  // Protected Admin Data Reset
+            return {
+              ...light,
+              state: 'ON',
+              voltage: 4.88,
+              current: 0.58,
+              power: 2.83,
+              healthStatus: 'CRITICAL',
+            };
+          }
+
+          if (faultType === 'DAYTIME_ON') {
+            setAmbientLightLux(650);
+
+            return {
+              ...light,
+              state: 'ON',
+              controlMode: 'manual',
+              healthStatus: 'WARNING',
+            };
+          }
+
+          return light;
+        })
+      );
+    },
+    [appMode]
+  );
+
+  // ============================================================
+  // ADMIN: CONTROLLER SIMULATION
+  // ============================================================
+
+  const simulateControllerOffline = useCallback(
+    (offline: boolean) => {
+      if (!isAdmin) return;
+
+      setControllers(prev =>
+        prev.map(controller => ({
+          ...controller,
+          status: offline ? 'OFFLINE' : 'ONLINE',
+          lastHeartbeat: offline
+            ? new Date(Date.now() - 3600000).toISOString()
+            : new Date().toISOString(),
+        }))
+      );
+    },
+    [isAdmin]
+  );
+
+  const setSimulatedAmbientLight = useCallback(
+    (lux: number) => {
+      if (appMode !== 'demo') return;
+
+      setAmbientLightLux(lux);
+    },
+    [appMode]
+  );
+
+  // ============================================================
+  // ADMIN: RESET DATA
+  // ============================================================
+
   const resetAllData = useCallback(() => {
     if (!isAdmin) {
-      console.warn('Unauthorized: Only administrators can restore database to defaults.');
+      console.warn(
+        'Unauthorized: Only administrators can restore database to defaults.'
+      );
       return;
     }
+
     storage.resetToDefaults();
+
     setStreetlights(storage.getStreetlights());
     setControllers(storage.getControllers());
     setFaults(storage.getFaults());
     setTickets(storage.getTickets());
     setThresholds(storage.getThresholds());
   }, [isAdmin]);
+
+  // ============================================================
+  // CONTEXT PROVIDER
+  // ============================================================
 
   return (
     <CCMSContext.Provider
@@ -631,16 +1048,19 @@ export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
         systemStatus,
         lastTelemetryTime,
         ambientLightLux,
+
         toggleStreetlight,
         setStreetlightMode,
         bulkControl,
         addStreetlight,
         updateStreetlight,
         deleteStreetlight,
+
         acknowledgeFault,
         resolveFault,
         createMaintenanceTicket,
         updateMaintenanceTicket,
+
         updateThresholds,
         setAppMode,
         simulateFaultCondition,
@@ -656,10 +1076,12 @@ export const CCMSProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useCCMS = () => {
   const context = useContext(CCMSContext);
+
   if (!context) {
-    throw new Error('useCCMS must be used within a CCMSProvider');
+    throw new Error(
+      'useCCMS must be used within a CCMSProvider'
+    );
   }
+
   return context;
 };
-
-

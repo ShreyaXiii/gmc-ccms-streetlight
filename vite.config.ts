@@ -14,6 +14,13 @@ export default defineConfig({
     port: 3000,
     open: false,
     host: true,
+    proxy: {
+      '/api/iot': {
+        target: 'http://192.168.1.22',
+        changeOrigin: true,
+        rewrite: (requestPath) => requestPath.replace(/^\/api\/iot/, ''),
+      },
+    },
   },
   build: {
     chunkSizeWarningLimit: 1600,
@@ -30,4 +37,3 @@ export default defineConfig({
     },
   },
 });
-
